@@ -1,2 +1,18 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# 默认：文本文件一律 LF（本仓在 Linux CI 上构建；Windows 工作树也保持 LF，避免
+# 「本地好好的、CI 上 shebang 带 \r」这类只在 runner 上暴露的问题）。
+* text=auto eol=lf
+
+# JVM / Gradle
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+*.properties text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+
+# Gradle wrapper（无扩展名的 sh 脚本）：CRLF 会让 Linux runner 上的 shebang 失效
+gradlew text eol=lf
+
+# Windows batch scripts: CRLF required for reliable cmd label/goto handling
+*.bat text eol=crlf
+gradlew.bat text eol=crlf

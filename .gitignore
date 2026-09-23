@@ -1,0 +1,13 @@
+# 构建产物
+build/
+**/build/
+.gradle/
+.kotlin/
+
+# 工具元数据（与本仓的 Suwayomi-next 侧约定一致，不入库）
+.workbuddy-ai/
+.workbuddy/
+
+# IDE
+.idea/
+*.iml
