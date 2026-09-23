@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | P0 | ✅ | 端口 8090/8091/4599/18899 无监听（无需停进程）；本机 JDK 25 = Temurin 25.0.4，与 CI 一致 |
 | P1 | ✅ | `.git` 拍平到 `E:\Github\Suwayomi-ext-runtime`（原来比工作区多一层）；Gradle wrapper 上移；`.gitattributes` / `.gitignore` / `LICENSE`(MPL-2.0) / `README.md` / `settings.gradle.kts` / `publish-placeholder.yml` 入库（`a43b145`、`13d9df7`） |
-| P1′ | ✅ | **GitHub Packages 占位包已发布**：`com.github.576576.suwayomi-ext-runtime:ext-runtime:0.0.0-placeholder`，含 `shared-sources` classifier。包页 https://github.com/576576/Suwayomi-ext-runtime/pkgs/maven/ext-runtime —— 可在 Package settings → Manage Actions access 给 `Suwayomi-next` 授权 **Read** |
+| P1′ | ✅ | **GitHub Packages 占位包已发布**：`com.github.576576.suwayomi-ext-runtime:ext-runtime:0.0.0-placeholder`，含 `shared-sources` classifier。包页 https://github.com/576576/Suwayomi-ext-runtime/pkgs/maven/ext-runtime —— ⚠️ **Maven 注册表只支持仓库级权限，没有 "Manage Actions access"**，消费方必须用 PAT(classic)（见 §2.1） |
 | P2–P6 | ⬜ | 见 §7 |
 
 > 占位发布踩到的坑记入 §5 **T13**（可执行位）—— 本地干跑（`publishToMavenLocal`）发现不了，只有 CI 会暴露。
@@ -120,7 +120,7 @@ com.github.576576.suwayomi-ext-runtime:ext-runtime:<version>
 
 | 通道 | 下载是否要凭据 | 结论 |
 | --- | --- | --- |
-| **GitHub Packages（Maven）** | **要**（public 包也要） | **已选**。消费方用自己仓库的 `GITHUB_TOKEN` 即可 —— 前提是把 `Suwayomi-next` 加进本 package 的 **Manage Actions access**（Read） |
+| **GitHub Packages（Maven）** | **要**（public 包也要） | **已选**。⚠️ **Maven / Gradle 注册表只支持「仓库级权限」**（官方文档原文：*The following GitHub Packages registries only support repository-scoped permissions: Apache Maven registry, Gradle registry*）→ **没有 "Manage Actions access"**（那只存在于 Container / npm / NuGet / RubyGems）。所以跨仓库消费**只能用 PAT (classic)**：scope `read:packages`，存进 `Suwayomi-next` 的 Actions secret（`EXT_RUNTIME_TOKEN`），workflow 里当 Maven 凭据或 `Authorization: Bearer` 用 |
 | GitHub Release 资产 | 不要 | 备选；本仓 Release 也可以同时挂制品作为兜底 |
 | JitPack | 不要 | 本仓打 tag 后可直接按坐标消费，但它在**自己的容器里跑构建**（要下 52MB AOSP 包、有构建时长上限）→ 不稳 |
 | Maven Central | — | 要签名 + 域名验证，对自用项目过重 |
@@ -208,6 +208,8 @@ com.github.576576.suwayomi-ext-runtime:ext-runtime:<version>
 | `.gitignore` | 删 `jvm-sandbox/**/build/` 一行 |
 | `android/extension-host/build.gradle.kts:4,54` | 指向解压后的 `build/ext-runtime-src` |
 | `scripts/make-jre.sh:383` | 注释（`extension-runtime` → `ext-runtime/src/shared/kotlin`） |
+| `.github/workflows/build.yml`（新增 secret 管道） | 两个消费点都要 PAT：① 桌面 —— `curl -fsSL -H "Authorization: Bearer ${{ secrets.EXT_RUNTIME_TOKEN }}"` 拉 fat jar；② Android —— `android/extension-host` 的 Gradle 仓库凭据（`password = System.getenv("EXT_RUNTIME_TOKEN")`，由 workflow 注入 env） |
+| `docs/release.md` | 记 `EXT_RUNTIME_TOKEN` 的用途、scope 与**到期日**（到期后 CI 报 401，不容易一眼认出） |
 
 **D. 文档**
 
@@ -236,7 +238,7 @@ com.github.576576.suwayomi-ext-runtime:ext-runtime:<version>
 | **T1** | 新仓库 `.gitattributes` 缺 `gradlew text eol=lf` | Linux runner 上 wrapper 的 shebang 带 `\r` → `bad interpreter: No such file or directory` | ✅ 已修：`.gitattributes` 默认 `eol=lf`，仅 `*.bat` 为 CRLF |
 | **T2** | ~~`actions/checkout` 漏 `submodules: recursive`~~ | — | **package 通道下此陷阱不存在**（L5 的附带收益） |
 | **T3** | ~~Docker 上下文不含 submodule~~ | — | 同上，`sandbox` stage 直接删除 |
-| **T4** | 发布制品版本解析为空 / 404 | CI 里静默下到 0 字节文件或 HTML 错误页 → 打包出一个坏 jar | 用 Gradle 依赖解析（不是裸 `curl`），失败即红；落地后断言 `unzip -l` 能列出 `sandbox/MainKt.class` |
+| **T4** | 拉制品时**没带 PAT / PAT 过期**，或版本号解析为空 | GitHub Packages 对未授权请求返回 **401**；`curl` 不加 `-f` 会把 401 的响应体当 jar 存下来 → 打包出一个坏 jar，**要到运行时才发现** | ① 一律 `curl -fsSL -H "Authorization: Bearer $EXT_RUNTIME_TOKEN"`；② 落地后断言 `unzip -l <jar>` 能列出 `sandbox/MainKt.class`（**不是**只看文件非空）；③ 本仓同时发 `*.sha256`，消费侧校验；④ secret 名与到期日写进 `docs/release.md` |
 | **T5** | Android 源目录指错 / 为空，AGP **不报错** | 编译期报 `Unresolved reference`（可发现）；若目录存在而内容不全 → **静默少类** | `:extension-host` 加断言任务：解压后校验 `build/ext-runtime-src/eu/kanade/tachiyomi/source/Source.kt`、`sandbox/Router.kt` 等关键文件存在 |
 | **T6** | `ci_pack_check.py:384-388` 的「`.dockerignore` 没排除 X 目录」断言 | 目录改名后该断言**恒为真**，变成永远通过的空断言 | 同步改新目录名；**package 通道下这段断言整段删掉**（不再需要那两个目录进上下文） |
 | **T7** | `ci_pack_check.py:717-718` 断言产物含 `bin/jvm-sandbox.jar` | 改名后**恒为假**（CI 直接红 —— 这是好事） | 改成 `bin/ext-runtime.jar` |
@@ -435,6 +437,8 @@ unzip -l build/libs/ext-runtime-shared-sources.jar | head              # 含 eu/
 
 **你的手动动作**
 
-- 在 https://github.com/576576/Suwayomi-ext-runtime/pkgs/maven/ext-runtime → Package settings → Manage Actions access 里把 `Suwayomi-next` 加为 **Read**。
+- 建一个 **PAT (classic)**，scope `read:packages`（本机手动发布再加 `write:packages`），
+  存进 `Suwayomi-next` 的 Actions secret：名字用 `EXT_RUNTIME_TOKEN`（与现有 `ANDROID_KEYSTORE_*` 同风格）。
+  **记下到期日** —— 过期后 Suwayomi-next 的 CI 会红，且报错是 401/404，不容易一眼看出是 token 到期。
 
 确认后我按 P2 → P6 执行，每阶段回报验收结果。

@@ -56,7 +56,12 @@ com.github.576576.suwayomi-ext-runtime:ext-runtime:<version>
 
 > **Android 侧只能吃 sources，不能吃编译好的 jar。** `:extension-host` 由 AGP 内置的 Kotlin 2.3.20 编译，而本仓库用 2.4.0 —— 2.3.20 读不了 2.4 产出的 Kotlin 元数据。吃源码则各端用自己的编译器，元数据版本问题不存在，且保住「一份源码两端编译」。
 
-**消费方授权**：GitHub Packages 的下载需要认证。要在 `Suwayomi-next` 的 Actions 里用它的 `GITHUB_TOKEN` 拉取，需在本 package 的设置页（Package settings → Manage Actions access）把 `Suwayomi-next` 加为 **Read**。
+**消费方授权（重要）**：GitHub 的 **Maven / Gradle 注册表只支持「仓库级权限」**，不支持细粒度权限 —— 所以**没有** "Manage Actions access" 入口（那个只存在于 Container / npm / NuGet / RubyGems）。本 package 归 `Suwayomi-ext-runtime` 仓库所有，要从**另一个仓库**拉取，只能用 **PAT (classic)**：
+
+1. 建一个 classic PAT，scope 只需 `read:packages`（若还想在本机手动发布，再加 `write:packages`）；
+2. 在 `Suwayomi-next` 里存成 secret（如 `EXT_RUNTIME_TOKEN`），workflow 里作为 Maven 凭据或 `Authorization: Bearer` 使用。
+
+> 两个都不行的东西：`GITHUB_TOKEN` 只能访问**工作流所属仓库**的 package，跨仓库拉不到；`gh auth login` 拿到的 OAuth token scope 里也没有 `read:packages` / `write:packages`。
 
 ## 与 Suwayomi-next 的关系
 
