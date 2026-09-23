@@ -55,13 +55,13 @@ val coreLibPrefixes = listOf(
     "java", "javax", "org/apache", "org/json", "org/w3c", "org/xml", "org/xmlpull", "junit",
 )
 
-// android-compat 自己实现的类必须从桩里剔掉：fat jar 里同名类两份时，谁生效取决于
-// classpath 顺序，两份的实现可以不一致。推导方式同 getAndroid.sh —— 按源码文件路径
+// android-compat 与共享源码树里自己实现的类必须从桩里剔掉：fat jar 里同名类两份时，谁生效
+// 取决于 classpath 顺序，两份的实现可以不一致。推导方式同 getAndroid.sh —— 按源码文件路径
 // 算类名，目录名里的点（如 rx.android.schedulers）也要还原成包路径。
 val compatSourceDirs = listOf(
     file("../android-compat/src/main/java"),
     file("../android-compat/config/src/main/java"),
-    file("../../extension-runtime/src/main/kotlin"),
+    file("../src/shared/kotlin"),
 )
 
 fun dedupPatterns(): List<String> {
@@ -124,8 +124,8 @@ val prepareAospJar by tasks.registering {
 }
 
 // 基线信息随产物走：fat jar 会把本子项目的类摊平打包，本子项目自己的 manifest 会丢，
-// 但 META-INF 下的资源不会 —— 想知道某个 jvm-sandbox.jar 是用哪份 AOSP 基线构建的，
-// 直接 unzip -p bin/jvm-sandbox.jar META-INF/android-stub.properties。
+// 但 META-INF 下的资源不会 —— 想知道某个 ext-runtime.jar 是用哪份 AOSP 基线构建的，
+// 直接 unzip -p ext-runtime.jar META-INF/android-stub.properties。
 val provenanceFile = layout.buildDirectory.file("android-stub-provenance.properties")
 val writeProvenance by tasks.registering(WriteProperties::class) {
     destinationFile.set(provenanceFile)
@@ -145,7 +145,7 @@ tasks.jar {
     archiveFileName.set("android-stub-$stubVersion.jar")
     inputs.dir(file("../android-compat/src/main/java"))
     inputs.dir(file("../android-compat/config/src/main/java"))
-    inputs.dir(file("../../extension-runtime/src/main/kotlin"))
+    inputs.dir(file("../src/shared/kotlin"))
 
     val patterns = dedupPatterns()
     from(aospJar.map { project.zipTree(it.asFile) }) {

@@ -3,6 +3,7 @@ import java.util.zip.ZipFile
 plugins {
     id("org.jetbrains.kotlin.jvm")
     application
+    `maven-publish`
 }
 
 repositories {
@@ -38,13 +39,6 @@ dependencies {
     runtimeOnly("org.slf4j:slf4j-nop:2.0.13")
     implementation("io.reactivex:rxjava:1.3.8")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.11.0")
-    implementation("io.insert-koin:koin-core:3.5.6")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.5.0")
-    implementation("io.github.oshai:kotlin-logging-jvm:6.0.9")
-    implementation("org.slf4j:slf4j-api:2.0.13")
-    runtimeOnly("org.slf4j:slf4j-nop:2.0.13")
-    implementation("io.reactivex:rxjava:1.3.8")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.11.0")
 
     // --- apk -> dex -> jar toolchain ---
     implementation("de.femtopedia.dex2jar:dex-tools:2.4.38")
@@ -54,14 +48,14 @@ dependencies {
     // AndroidCompat（android.* / androidx.* 的桌面桩实现）连同它的 Config 模块以源码形式随本仓库
     // 构建，见 android-compat/ —— 改这些桩不必再去改 jar。两个子项目把三方依赖声明为 compileOnly，
     // 运行期由本模块提供（同名坐标在下面已列出）。
-    implementation(project(":android-compat"))
-    implementation(project(":android-compat:config"))
+    implementation(project(":ext-runtime:android-compat"))
+    implementation(project(":ext-runtime:android-compat:config"))
     // AOSP 公开 API 空壳，构建期按 android-stub/ 的 pin 生成（已剔除 AndroidCompat 自己实现的类，
     // 与本工程零重名）。扩展用到的 `android.*` 远不止 AndroidCompat 那 626 个类：源设置界面会链到
     // `android.widget.TextView` / `android.text.TextWatcher` / `android.icu.text.*` 等等，
     // 缺一个整个设置页就是 NoClassDefFoundError。方法体一律是
     // `throw new RuntimeException("Stub!")`，只在**链接期**被用到，不会被调用。
-    implementation(project(":android-stub"))
+    implementation(project(":ext-runtime:android-stub"))
     implementation("com.typesafe:config:1.4.9")
     implementation("io.github.config4k:config4k:0.7.0")
     implementation("ca.gosyer:kotlin-multiplatform-appdirs:2.0.0")
@@ -74,10 +68,14 @@ application {
 kotlin {
     // 统一 Java 25：与 CI setup-java（Temurin 25）及发布捆绑的 JRE 25 一致
     jvmToolchain(25)
+    // 钉死模块名，避免 @Metadata 跟着 group / 仓库名 / 子项目路径漂移（见 docs/EXTRACTION_RECORD.md）
+    compilerOptions {
+        moduleName.set("suwayomi-ext-runtime")
+    }
     // 共享源码树：`eu.kanade.tachiyomi.**` 接口实现、SourceDriver、Router 等
-    // 与平台无关的部分由桌面沙盒和 Android extension-host 共同编译，
-    // 避免两份实现漂移（见 docs/migration/ANDROID_IMPL.md A4）。
-    sourceSets["main"].kotlin.srcDir("../extension-runtime/src/main/kotlin")
+    // 与平台无关的部分由桌面沙盒和 Android extension-host 共同编译，避免两份实现漂移。
+    // 它必须是一个**独立源根**，Android 侧只吃这一个根 —— 原因见 docs/EXTRACTION_RECORD.md。
+    sourceSets["main"].kotlin.srcDir("src/shared/kotlin")
 }
 
 tasks.test {
@@ -95,8 +93,8 @@ tasks.test {
 val verifyStubDedup by tasks.registering {
     group = "verification"
     description = "核对 android-stub 与 android-compat 没有同名类"
-    val stubJar = project(":android-stub").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-    val compatJar = project(":android-compat").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+    val stubJar = project(":ext-runtime:android-stub").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+    val compatJar = project(":ext-runtime:android-compat").tasks.named<Jar>("jar").flatMap { it.archiveFile }
     inputs.files(stubJar, compatJar)
 
     doLast {
@@ -117,6 +115,8 @@ val verifyStubDedup by tasks.registering {
 
 tasks.jar {
     dependsOn(verifyStubDedup)
+    // 部署名固定为 ext-runtime.jar（Rust 侧按这个名字找，见 docs/EXTRACTION_RECORD.md）
+    archiveFileName.set("ext-runtime.jar")
     manifest {
         attributes["Main-Class"] = "sandbox.MainKt"
     }
@@ -125,4 +125,45 @@ tasks.jar {
         exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// 共享源码树单独出一个制品，供 Android extension-host 编译（它读不了本模块的 Kotlin 元数据）
+val sharedSourcesJar by tasks.registering(Jar::class) {
+    group = "build"
+    description = "共享源码树（src/shared/kotlin）—— 供 Android extension-host 编译"
+    archiveClassifier.set("shared-sources")
+    archiveFileName.set("ext-runtime-shared-sources.jar")
+    from("src/shared/kotlin")
+}
+
+// 让 `./gradlew build` 一次产出两个制品
+tasks.named("assemble") {
+    dependsOn(sharedSourcesJar)
+}
+
+// --- 发布到 GitHub Packages -------------------------------------------------
+// 坐标：com.github.576576.suwayomi-ext-runtime:ext-runtime
+// 一个 artifactId、两个制品（fat jar + classifier=shared-sources），归属同一个 package。
+// 凭据从环境变量取、由 CI 注入；跨仓库消费的授权方式见 docs/EXTRACTION_RECORD.md。
+group = "com.github.576576.suwayomi-ext-runtime"
+version = providers.gradleProperty("extRuntimeVersion").orElse("0.0.0-dev").get()
+
+publishing {
+    publications {
+        create<MavenPublication>("extRuntime") {
+            artifactId = "ext-runtime"
+            artifact(tasks.named("jar"))
+            artifact(sharedSourcesJar)
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/576576/Suwayomi-ext-runtime")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: "x-access-token"
+                password = System.getenv("GITHUB_TOKEN") ?: ""
+            }
+        }
+    }
 }

@@ -29,5 +29,6 @@ kotlin {
     jvmToolchain(25)
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        moduleName.set("suwayomi-ext-runtime:android-compat:config")
     }
 }

@@ -8,13 +8,13 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":android-compat:config"))
+    implementation(project(":ext-runtime:android-compat:config"))
 
     // 编译期需要的 android.* / androidx.* 桩。运行期由应用模块把同一份打进 fat jar ——
     // 扩展会链到 AndroidCompat 没实现的类（android.widget.TextView 等），缺了就 NoClassDefFoundError。
-    compileOnly(project(":android-stub"))
+    compileOnly(project(":ext-runtime:android-stub"))
 
-    // 运行期需要的：坐标与 jvm-sandbox/build.gradle.kts 里的一致，Gradle 去重后 fat jar 不变。
+    // 运行期需要的：坐标与 ext-runtime/build.gradle.kts 里的一致，Gradle 去重后 fat jar 不变。
     implementation("com.typesafe:config:1.4.9")
     implementation("io.github.config4k:config4k:0.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
@@ -52,5 +52,6 @@ kotlin {
     jvmToolchain(25)
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        moduleName.set("suwayomi-ext-runtime:android-compat")
     }
 }

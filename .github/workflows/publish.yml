@@ -1,0 +1,138 @@
+name: Publish
+
+# 发布 ext-runtime 到 GitHub Packages：推 v* tag 触发，也可手动 workflow_dispatch。
+# 坐标、制品构成、认证与消费方式见 docs/EXTRACTION_RECORD.md
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 版本号（不带 v 前缀，如 0.1.0）
+        required: true
+        type: string
+
+permissions:
+  contents: write # 创建/更新 GitHub Release 并挂载制品
+  packages: write # 推 Maven 包
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 解析版本号
+        id: ver
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            V="${REF_NAME#v}"
+          else
+            V="$INPUT_VERSION"
+          fi
+          if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::版本号格式非法：$V"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "发布版本：$V"
+
+      - name: 构建
+        run: ./gradlew --no-daemon --console=plain build
+
+      # 制品不变量。AOSP 基线一旦要升级，这里必须同步改 —— 有意为之。
+      - name: 校验制品
+        run: |
+          set -euo pipefail
+          LIB=ext-runtime/build/libs
+          test -f "$LIB/ext-runtime.jar"
+          test -f "$LIB/ext-runtime-shared-sources.jar"
+
+          echo "--- android-stub 基线（应为 30.r03.1）---"
+          unzip -p "$LIB/ext-runtime.jar" META-INF/android-stub.properties | tee /tmp/stub.properties
+          grep -q '^version=30\.r03\.1$' /tmp/stub.properties \
+            || { echo "::error::AOSP 基线与预期不一致"; exit 1; }
+
+          echo "--- 共享源码树制品内容 ---"
+          unzip -l "$LIB/ext-runtime-shared-sources.jar" | head -20
+          unzip -l "$LIB/ext-runtime-shared-sources.jar" | grep -q 'eu/kanade/tachiyomi/' \
+            || { echo "::error::shared-sources 制品缺少 eu/kanade/tachiyomi/**"; exit 1; }
+          unzip -l "$LIB/ext-runtime-shared-sources.jar" | grep -q 'suwayomi/tachidesk/' \
+            || { echo "::error::shared-sources 制品缺少 suwayomi/tachidesk/**"; exit 1; }
+
+      - name: 发布到 GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./gradlew --no-daemon --console=plain publish \
+            -PextRuntimeVersion="${{ steps.ver.outputs.version }}"
+
+      - name: 生成校验和
+        run: |
+          set -euo pipefail
+          LIB=ext-runtime/build/libs
+          V="${{ steps.ver.outputs.version }}"
+          mkdir -p dist
+          cp "$LIB/ext-runtime.jar"                "dist/ext-runtime-$V.jar"
+          cp "$LIB/ext-runtime-shared-sources.jar" "dist/ext-runtime-$V-shared-sources.jar"
+          ( cd dist && sha256sum "ext-runtime-$V.jar" "ext-runtime-$V-shared-sources.jar" \
+              > "ext-runtime-$V.sha256" )
+          cat "dist/ext-runtime-$V.sha256"
+
+      - name: 挂载到 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "v$V" >/dev/null 2>&1; then
+            gh release create "v$V" --title "v$V" --generate-notes
+          fi
+          gh release upload "v$V" dist/* --clobber
+
+      - name: 小结
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          {
+            echo "### 已发布 \`$V\`"
+            echo
+            echo '**GitHub Packages**（Gradle 依赖解析，跨仓库需 PAT classic + `read:packages`）'
+            echo '```kotlin'
+            echo 'repositories {'
+            echo '    maven {'
+            echo '        url = uri("https://maven.pkg.github.com/576576/Suwayomi-ext-runtime")'
+            echo '        credentials {'
+            echo '            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")'
+            echo '            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("EXT_RUNTIME_TOKEN")'
+            echo '        }'
+            echo '    }'
+            echo '}'
+            echo 'dependencies {'
+            echo "    implementation(\"com.github.576576.suwayomi-ext-runtime:ext-runtime:$V\")"
+            echo '}'
+            echo '```'
+            echo
+            echo '**Release 资产**（免鉴权，直接 curl）'
+            echo '```bash'
+            echo "curl -fLO ${{ github.server_url }}/${{ github.repository }}/releases/download/v$V/ext-runtime-$V.jar"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
