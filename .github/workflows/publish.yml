@@ -221,7 +221,6 @@ jobs:
           ASSET="ext-runtime-jre-$V-$JRE_OS-$JRE_ARCH.tar.gz"
           # 归档里把 jre/ 放在根：消费方 `tar -xzf <资产> -C <stage>` 直接得到 <stage>/jre
           tar -czf "$ASSET" -C out jre
-          echo "asset=$ASSET" >> "$GITHUB_ENV"
           ls -la "$ASSET"
 
       - name: 挂载到 GitHub Release
@@ -229,4 +228,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           V: ${{ needs.publish.outputs.version }}
-        run: gh release upload "v$V" "$ASSET" --clobber
+          JRE_OS: ${{ matrix.jre_os }}
+          JRE_ARCH: ${{ matrix.jre_arch }}
+        run: |
+          set -euo pipefail
+          # 资产名在这里**重算**，不走上一步的 GITHUB_ENV：那边写的是小写 asset，
+          # 而 Linux 的 env 是大小写敏感的，`$ASSET` 会是空 → gh 报 "no matches found"。
+          # 直接由 V + 矩阵重算最稳，也省掉一个跨步骤的隐式契约。
+          gh release upload "v$V" "ext-runtime-jre-$V-$JRE_OS-$JRE_ARCH.tar.gz" --clobber
