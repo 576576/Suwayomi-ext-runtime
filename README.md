@@ -40,6 +40,23 @@ ext-runtime/
 - 首次构建会从 `dl.google.com` 下载 AOSP 公开 API 包（`platform-30_r03.zip`，约 52 MB），按 `android-stub.properties` 里的 sha256 校验后剥离生成 `android-stub`。可用 `-PaospPackageUrl=<镜像>` 换源，pin 仍然生效。
 - 产物里的 `META-INF/android-stub.properties` 记录了这次用的是哪份 AOSP 基线（版本号 = `<api>.<包修订>.<剥离修订>`）。
 
+## 裁剪 JRE（`+jre` / Docker 用）
+
+`+jre` 桌面包与 Suwayomi-next 的 Docker 镜像用的是本仓库发布的裁剪 JRE。本地要复现：
+
+```bash
+# 参数：<windows|linux|mac> <x64|aarch64> <输出目录>；宿主必须与目标同架构
+bash scripts/make-jre.sh windows x64 /tmp/jre
+/tmp/jre/bin/java -version      # Windows 上是 bin/java.exe
+```
+
+- 需要 **JDK 25**；脚本会先探 `$JAVA_HOME/jmods/`，没有才去 Adoptium 下 jmods（约 85 MB，
+  Temurin JDK 24 起按 JEP 493 不再随归档带 `jmods/`）。
+- 模块白名单、`--include-locales=en,ja,zh` 的选择理由写在脚本头注释里。
+- 两个验证脚本：`.workbuddy-ai/verify/check_jre_arch.sh`（按 `binary-probe` 标记抽真代码
+  单测宿主探测 + 产物自检，37 项）、`.workbuddy-ai/verify/e2e_host_jmods.sh`
+  （「宿主自带 jmods 就跳过下载」分支的端到端，本机默认走不到那条分支）。
+
 ## 版本号
 
 **`<AOSP API level>.<本仓库主版本>.<修订>`**，如 `30.1.0` —— 大版本跟着 `android-stub` 的
@@ -64,6 +81,14 @@ ext-runtime/
 |---|---|
 | `ext-runtime-<V>.jar` | **桌面 / 服务端 / Docker**：fat jar，部署为 `<发布根>/bin/ext-runtime.jar`，由 Suwayomi-next 的 server 拉起 |
 | `ext-runtime-<V>-shared-sources.jar` | **Android**：`Suwayomi-next/android/extension-host` 展开成目录后作为额外源根编译 |
+| `ext-runtime-jre-<V>-<os>-<arch>.tar.gz` ×6 | **`+jre` 桌面包 / Docker 镜像**：jlink 裁剪好的 Java 运行时，解开后顶层就是 `jre/` |
+
+后一类是 `publish.yml` 的 `jre` job 用**原生 runner** 逐个平台裁出来的（jlink 不能跨平台
+编译：产出的 `bin/java` 与原生库取自宿主 JDK）。六格 = `windows|linux|mac` × `x64|aarch64`，
+其中 `windows/aarch64` 用 Azul Zulu（Adoptium 对该平台没发 JDK 25 的任何制品）。
+**为什么这份 JRE 归本仓库管**：它存在的唯一目的是跑 `ext-runtime.jar`，模块白名单完全由
+沙盒需求决定，必须与沙盒代码同仓演进 —— 理由与坑见
+[`docs/EXTRACTION_RECORD.md`](docs/EXTRACTION_RECORD.md) §10。
 
 **消费方走 Release 资产，不走 Packages。** Release 资产**免鉴权**，`curl -fLO` 即可；
 Packages 即使对公开包也要求 token，跨仓库还要单独配 PAT。两条链最终都要「下载 + 展开/拷贝」，
@@ -89,7 +114,7 @@ GitHub 的 **Maven / Gradle 注册表只支持「仓库级权限」**，没有 "
 
 - **运行时契约不变**：HTTP 路由（`/health`、`/extensions`、`/sources`、`/reload`、`/source/{id}/…`）、JSON 形状、主类 `sandbox.MainKt`、部署文件名 `bin/ext-runtime.jar` 都按既有约定；Rust 侧 `crates/suwayomi-domain/src/source/sandbox.rs` 不需要改动。
 - **本地调试不用发版**：`SUWAYOMI_SANDBOX_JAR` 指向本仓库 `build/libs/ext-runtime.jar` 即可接管。
-- **改动的传播**：改了 `src/shared/` → 本仓库打 tag 发版 → Suwayomi-next bump 版本。**这一步漏了不会报错**（Android 会用旧源码），所以别漏。
+- **改动的传播**：改了 `src/shared/` → 本仓库打 tag 发版 → Suwayomi-next 下次构建自动解析到新版本（它按最新 release 解析，与对待 WebUI 一致，**不需要改它的代码**）。但若这次改动**新增了 JVM 模块依赖**，别忘了同步 `scripts/make-jre.sh` 的模块白名单 —— 漏了只在 `+jre` 包上表现为 `NoClassDefFoundError`。
 
 ## 许可
 

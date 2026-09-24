@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 版本号（不带 v 前缀，如 0.1.0）
+        description: 版本号（不带 v 前缀；大版本须等于 pin 里的 AOSP API level，如 30.1.0）
         required: true
         type: string
 
@@ -31,6 +31,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -156,3 +158,64 @@ jobs:
             echo "curl -fLO ${{ github.server_url }}/${{ github.repository }}/releases/download/v$V/ext-runtime-$V.jar"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # 裁剪 JRE：**必须原生 runner**，jlink 不能跨平台生成镜像（详见 scripts/make-jre.sh）。
+  # 六个 (os, arch) 各一份资产，消费方按 <V>+<os>+<arch> 直接下载。
+  jre:
+    name: 裁剪 JRE（${{ matrix.jre_os }}-${{ matrix.jre_arch }}）
+    needs: publish
+    permissions:
+      contents: write # 往 publish 建好的那个 Release 里挂资产
+    strategy:
+      fail-fast: false # 一个平台挂掉不该拖累其余五个
+      matrix:
+        include:
+          - { jre_os: windows, jre_arch: x64,     os: windows-latest,   jdk: temurin }
+          # 只有这一格用 zulu：Adoptium 对 windows/aarch64 没发 JDK 25 的任何制品
+          # （jdk/jre/jmods 全 404），而 Zulu 的归档自带 jmods/。见 make-jre.sh 头注释。
+          - { jre_os: windows, jre_arch: aarch64, os: windows-11-arm,   jdk: zulu    }
+          - { jre_os: linux,   jre_arch: x64,     os: ubuntu-latest,    jdk: temurin }
+          - { jre_os: linux,   jre_arch: aarch64, os: ubuntu-24.04-arm, jdk: temurin }
+          - { jre_os: mac,     jre_arch: x64,     os: macos-15-intel,   jdk: temurin }
+          - { jre_os: mac,     jre_arch: aarch64, os: macos-15,         jdk: temurin }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: ${{ matrix.jdk }}
+          java-version: '25'
+
+      - name: 裁剪 JRE
+        shell: bash
+        run: bash scripts/make-jre.sh "${{ matrix.jre_os }}" "${{ matrix.jre_arch }}" out/jre
+
+      - name: 冒烟并打包
+        shell: bash
+        env:
+          JRE_OS: ${{ matrix.jre_os }}
+          JRE_ARCH: ${{ matrix.jre_arch }}
+          V: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Windows 的启动器带 .exe 后缀，其余不带
+          if [ "$JRE_OS" = "windows" ]; then JAVA=out/jre/bin/java.exe; else JAVA=out/jre/bin/java; fi
+          test -f "$JAVA" || { echo "::error::产出的 JRE 缺 $JAVA"; ls -R out/jre | head -30; exit 1; }
+          test -f out/jre/release || { echo "::error::产出的 JRE 缺 release 文件"; exit 1; }
+
+          # 真跑一次：magic/架构自检在 make-jre.sh 里已经做了，这里验它**能起来**
+          "$JAVA" -version
+
+          ASSET="ext-runtime-jre-$V-$JRE_OS-$JRE_ARCH.tar.gz"
+          # 归档里把 jre/ 放在根：消费方 `tar -xzf <资产> -C <stage>` 直接得到 <stage>/jre
+          tar -czf "$ASSET" -C out jre
+          echo "asset=$ASSET" >> "$GITHUB_ENV"
+          ls -la "$ASSET"
+
+      - name: 挂载到 GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ needs.publish.outputs.version }}
+        run: gh release upload "v$V" "$ASSET" --clobber

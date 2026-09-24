@@ -243,7 +243,7 @@ Suwayomi-next 每次构建**动态解析最新** ext-runtime 版本（与它对�
 所以升级 ext-runtime **不需要改 Suwayomi-next 的任何文件**：
 
 ```
-改 ext-runtime 源码 → 在本仓打 v0.2.0 tag → Suwayomi-next 下次构建自动用上
+改 ext-runtime 源码 → 在本仓打 v30.2.0 tag → Suwayomi-next 下次构建自动用上
 ```
 
 需要显式 pin 时（比如要复现某个旧版本），在 `build.yml` 的 `ext_runtime_url` input 里
@@ -310,4 +310,80 @@ parameter 的签名，反射按普通参数表找不到），与剥离无关，�
   改了 targets 矩阵、发布说明被精简过，拿合并前那版对齐只会报一堆与本次无关的差异。
   pack 一侧比的是「改动前 build.yml ↔ 改动后 build.yml」，并把 `jvm-sandbox/` 中间产物
   与 `bin/jvm-sandbox.jar → bin/ext-runtime.jar` 这两处**预期差异**排除在比对之外。
+
+---
+
+## 10. JRE 裁剪为什么也搬到本仓库（2026-09-24）
+
+`make-jre.sh` 与它的两个验证脚本（`check_jre_arch.sh`、`e2e_host_jmods.sh`）原本在
+Suwayomi-next，现在都在本仓：脚本在 `scripts/`，验证脚本在 `.workbuddy-ai/verify/`。
+
+### 理由
+
+1. **模块白名单由沙盒需求决定，必须同仓演进。** 这份 JRE 存在的唯一目的是跑
+   `ext-runtime.jar`（服务端是 Rust 二进制、托盘是原生可执行文件，都不需要 JVM）。
+   白名单里的 `jdk.httpserver` 是沙盒自己的 HTTP 宿主、`java.prefs` 是共享源码里
+   `PersistentCookieStore` 用的、`--include-locales=en,ja,zh` 是为扩展站的日/中文站点。
+   留在一个改沙盒时不会碰的仓库里，风险是：加了个模块没人想起改白名单 → 运行期
+   `NoClassDefFoundError`，而且**只在 `+jre` 包上出现**（开发机跑的是完整 JDK）。
+2. **jlink 不能跨平台编译。** 产出的 `bin/java` 与原生库取自宿主 JDK，不是
+   `--module-path` 里的 jmods。所以每个 `(os, arch)` 都需要一个原生 runner —— 这件事
+   本仓做正合适，因为 `publish.yml` 本来就按平台铺矩阵；反过来，留在 Suwayomi-next 就
+   意味着那边的主构建矩阵被一个与它无关的约束（runner 必须与目标同架构）绑架。
+3. **消费侧更简单。** 资产是**按版本 + 平台**命名的，Suwayomi-next 只按
+   `<V>-<os>-<arch>` 下载解开，不需要装 JDK、不需要 jmods 的下载兜底逻辑、也不会
+   出现"这个版本到底有没有 JRE 资产"的判断。
+
+### 发布形态
+
+`publish.yml` 的 `jre` job（`needs: publish`，六格矩阵）在 `publish` 建好的那个 Release
+里挂六份资产：
+
+```
+ext-runtime-jre-<V>-windows-x64.tar.gz      解压后顶层就是 jre/
+ext-runtime-jre-<V>-windows-aarch64.tar.gz
+ext-runtime-jre-<V>-linux-x64.tar.gz
+ext-runtime-jre-<V>-linux-aarch64.tar.gz
+ext-runtime-jre-<V>-mac-x64.tar.gz
+ext-runtime-jre-<V>-mac-aarch64.tar.gz
+```
+
+- 每次发版**出齐六份**（`fail-fast: false`，一格挂掉不拖累其余）。代价是 `jmods`
+  要按平台各下一份（约 85 MB，JEP 493 之后 Temurin JDK 归档里不再带 `jmods/`）；
+  换来的是消费侧不必判断资产是否存在。脚本会先探 `$JAVA_HOME/jmods/`，有就直接用。
+- **只有 `windows/aarch64` 那一格用 Azul Zulu**：Adoptium 对该平台**没有发布 JDK 25 的
+  任何制品**（`jdk`/`jre`/`jmods` 三端点全 404，该平台在 Adoptium 上最高只到 JDK 21），
+  拿不到 jmods 就出不了 +jre。Zulu 的 `win_aarch64` 归档自带 `jmods/`。
+- 消费侧的 `base=` 输出让拼 URL 变简单：`scripts/resolve-ext-runtime.sh` 吐
+  `url=` / `version=` / `base=`，其余资产按 `<base>/<资产名>` 拼即可，不必为每种
+  `(os, arch)` 再探测一遍。
+
+### 搬过来的三个坑（原来记在 Suwayomi-next 的 `docs/release.md`）
+
+- **`uname -m` 在 `windows-11-arm` 上会撒谎**：镜像确实是原生 arm64、装的也是货真价实的
+  `win_aarch64` JDK，但 runner 上的 **Git for Windows 是 x64 版**，MSYS 的 `uname -m`
+  因此报 `x86_64`。「宿主架构必须等于目标架构」这道闸因此误判过一次（run 35074440661，
+  jlink 都没来得及启动）。现在宿主架构**优先读 `$JAVA_HOME/bin/java` 的可执行文件头**
+  （与产物自检同一套偏移表），再退到 `release` 的 `OS_ARCH`，最后才是 `uname -m`。
+- **两道闸**：入口比「宿主平台 vs 目标平台」，末尾核「产物 magic **+ 架构**」。只判
+  magic 拦不住同格式但错架构的产物（x64 的 jlink + aarch64 的 jmods 就会产出那种），
+  装上就是 `UnsatisfiedLinkError`。自检代码在 `make-jre.sh` 的 `binary-probe` 标记块里，
+  被 `check_jre_arch.sh` 整块抽出来单测（合成夹具 + CI 真产物夹具，共 37 项）。
+- **`JAVA_HOME` 是 Windows 形式时不能直接做路径名展开**：`setup-java` 注入的是
+  `C:\hostedtoolcache\…`，反斜杠在 bash 的 glob 里是转义符 —— `[[ -d "$JAVA_HOME/jmods" ]]`
+  认得，`compgen -G "$JAVA_HOME/jmods/*.jmod"` 却永远匹配不到。`jmods_dir()` 因此先把
+  `JAVA_HOME` 过 `cygpath -u` 归一化、并用 `find` 代替 glob。这个坑**本地复现不了**
+  （本机 Temurin 25 按 JEP 493 不带 jmods，两条分支都走下载），只在 windows-arm64 上炸
+  （run 35078586922）。
+
+### Suwayomi-next 侧因此删掉的东西
+
+- `build.yml` 的「安装 JDK」步骤**整步删除**；`release.yml` 矩阵里的 `jdk` 列删除
+  （它只服务那一步）；`+jre` 分支改成 `curl` + `tar -xzf` + `java -version` 冒烟。
+- `Dockerfile` 的第 3 段从「`eclipse-temurin:25-jdk` 里跑 jlink」改成
+  「`alpine` + 下载 `ext-runtime-jre-<V>-linux-<arch>.tar.gz`」，镜像里不再有 JDK。
+- `scripts/make-jre.sh` 删除；`.workbuddy/verify/{check_jre_arch.sh,e2e_host_jmods.sh}`
+  删除（现居本仓）。验证脚本相应改桩：`ci_equiv.py` 造两份 JRE 夹具
+  （`-win` 那份启动器叫 `java.exe`，与真资产一致），`ci_pack_check.py` 的 curl 桩按 URL
+  里的 os 段现场 tar 一份出来。改完两边仍全绿：**35/35** 与 **358/358**。
 
