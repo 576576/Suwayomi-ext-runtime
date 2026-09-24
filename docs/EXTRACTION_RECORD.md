@@ -119,11 +119,22 @@ jar 体积 45382030 → 45381739（少 291 字节）＝ 上面两个类的成员
 
 **跨仓库拉取**是另一回事：GitHub Packages 的 **Maven / Gradle 注册表只支持仓库级权限**，
 没有 "Manage Actions access"（那只存在于 Container / npm / NuGet / RubyGems）。
-所以 Suwayomi-next 侧只能配 **PAT (classic) + `read:packages`**，放进 secret
-`EXT_RUNTIME_TOKEN`。公开包同样需要鉴权。
+要用 Packages 跨仓库消费，Suwayomi-next 侧必须配 **PAT (classic) + `read:packages`**，
+而且公开包同样需要鉴权。
 
-因为 PAT 这条路对 CI 有摩擦，发布时**同时**把两个制品挂到 GitHub Release 资产上 ——
-Release 资产免鉴权，`curl -fLO` 即可，留给「只想拿 jar」的场景。
+**但这条 PAT 路最后没走。** 发布时两个制品**同时**挂到了 GitHub Release 资产上，
+而 Release 资产**免鉴权**；于是 Suwayomi-next 的两条消费链都改走 Release：
+
+| 消费方 | 资产 | 通道 |
+| --- | --- | --- |
+| 桌面 / Docker | `ext-runtime-<V>.jar` | Release 资产（免鉴权） |
+| Android `:extension-host` | `ext-runtime-<V>-shared-sources.jar` | Release 资产（免鉴权） |
+
+结果是 Suwayomi-next **一个 PAT secret 都不需要**，也没有 PAT 过期导致 401 的风险。
+Packages 通道照常发布（`publish.yml` 里 `maven-publish` 那步），作为「想按 Maven 坐标
+消费」的备选留着，目前没有调用方依赖它 —— 哪天真要用，再配 PAT 也不迟。
+
+`EXT_RUNTIME_TOKEN` 这个 secret 因此**没有配置，也不需要配置**。
 
 ---
 
@@ -135,3 +146,151 @@ Release 资产免鉴权，`curl -fLO` 即可，留给「只想拿 jar」的场�
 | 制品文件名 | 未固定 | 显式固定为 `ext-runtime.jar` / `ext-runtime-shared-sources.jar` | 见 §3 |
 | Kotlin 模块名 | 未提及 | 三处显式 `moduleName` | 见 §1 |
 | 校验方式 | 体积/md5 对齐 | 语义等价比对 | 改名必然改字节，md5 不可能相等 |
+| Android 消费通道 | GitHub Packages（PAT） | Release 资产（免鉴权） | Gradle 用不了依赖坐标做源目录，见 §7.2 |
+| Android 共享源码落点 | 未定 | `android/build/ext-runtime-src`（下载产物，不进版本库） | 见 §7.2 |
+
+---
+
+## 7. P4：Suwayomi-next 侧怎么改
+
+### 7.1 关键观察：所有桌面 target 其实是同一个 platform
+
+`build.yml` 的矩阵包含 `windows-x64` / `windows-arm64` / `linux-x64` / `linux-arm64` /
+`macos-x64` / `macos-arm64`。但 ext-runtime 是**纯 JVM 字节码**，`jvmToolchain(25)` +
+`JavaVersion.VERSION_21` 的产物不区分平台 —— 六个 target 构建出的是同一个 jar。
+
+原方案是每个 target 各自 `./gradlew jar`（所以才有 T10「首个 target 要下 52MB AOSP 包」）。
+改成 package 通道后还能更进一步：**在 prep 里解析一次制品 URL，六个 target 复用**。
+
+这与 WebUI 的处理方式完全同构 —— prep 用 `scripts/resolve-webui.sh "$KIND"` 解析一次，
+把 `webui_url` 作为 input 传给 `build.yml`，所有 target 下载同一份。
+ext-runtime 照抄这个模式：`scripts/resolve-ext-runtime.sh`，输出 `ext_runtime_url` +
+`ext_runtime_version`。
+
+### 7.2 通道选择：Release 资产，不是 Packages
+
+两个通道都能用，但用途不同：
+
+| 通道 | 鉴权 | 适合 |
+| --- | --- | --- |
+| GitHub Packages (Maven) | 跨仓库必须 **PAT (classic) + `read:packages`** | Gradle/Android 侧按依赖坐标解析 |
+| **GitHub Release 资产** | **免鉴权** | 桌面 target 直接 `curl` 一个 jar |
+
+`build.yml` 只是把 jar 拷进 `bin/`，并不需要 Maven 坐标。走 Release 资产可以：
+免掉一个 PAT secret、免掉 PAT 过期导致 401 的风险（T4 的一半）、不需要 `unzip -l` 之外的校验之外的东西。
+
+**Android 侧后来也走了 Release 资产**（与计划不同，见 §6）：原计划是「Android 走 Packages，
+因为它要按坐标解析 `shared-sources` 分类器」。改主意的理由是 ——
+**Gradle 没法把一个依赖当源目录用**：`:extension-host` 需要的是 `addStaticSourceDirectory`，
+最终一定要下载 + 展开成目录，那 Maven 坐标带来的解析能力一点也用不上，
+却要为此付出一个 PAT。既然 `-shared-sources.jar` 也挂在 Release 资产上，直接下载更省事。
+
+代价是 Android 侧自己多了一层脚本（`android/scripts/fetch-ext-runtime-src.sh`：
+下载 → 用 `scripts/unzip_any.py` 展开 → 校验三个包根 + `.kt` 数量），
+以及 `:extension-host/build.gradle.kts` 在**配置期**就断言目录存在且完整 ——
+不然「下载/展开出问题」会表现为编译期的「找不到符号」，指错方向。
+
+`resolve-ext-runtime.sh` 因此照抄 `resolve-webui.sh` 的三级探测（`gh api` → 匿名 REST →
+匿名 HTML），并加一个 `--sources` 开关切换资产类型（默认取桌面 jar）。判据必须**双向**：
+桌面 jar 要 `不以 -shared-sources.jar 结尾`，源码包要 `以它结尾` —— 只做单向排除会让
+`--sources` 也挑到桌面 jar（两者同名前缀，只差后缀）。
+
+### 7.3 版本一致性：prep 解析一次，两个仓库对齐
+
+`prep` 从 Release 资产名里反解版本号（`ext-runtime-<V>.jar` → `<V>`），
+作为 input 传给 `build.yml`，写进编译期环境变量。
+
+这样「本仓的版本」和「主仓库构建用的版本」在同一次发布里是同一个字符串，
+排查时可以直接对上号。约定见 §8。
+
+### 7.4 本仓库里被删掉的东西
+
+`jvm-sandbox/`（343 个跟踪文件）与 `extension-runtime/`（52 个）已 `git rm`。
+删除前逐文件核对过：
+
+- `jvm-sandbox/**` → `ext-runtime/**`，**只有 5 个文件没有迁过去**，且都是有意丢弃的：
+  `gradle/wrapper/{gradle-wrapper.jar,gradle-wrapper.properties}`、`gradlew`、`gradlew.bat`、
+  嵌套的 `settings.gradle.kts`（新仓库用根 wrapper，见 §1）。
+- `extension-runtime/src/main/kotlin/**` → `ext-runtime/src/shared/kotlin/**`，**52 = 52 逐字对齐**。
+- 其中 `eu/kanade/tachiyomi/LICENSE`（Mihon 的 Apache-2.0，Copyright 2015 Javier Tomás）
+  随之迁出并保留在新仓库 —— 本仓库因此不需要再单独留一份，`android-compat/LICENSE`
+  也已按约定丢弃。
+
+---
+
+## 8. 版本与发布约定
+
+本仓推 `v<V>` tag → `publish.yml` 发 `<V>` 到 Packages + Release 资产。
+
+Suwayomi-next 每次构建**动态解析最新** ext-runtime 版本（与它对待 WebUI 的方式一致），
+所以升级 ext-runtime **不需要改 Suwayomi-next 的任何文件**：
+
+```
+改 ext-runtime 源码 → 在本仓打 v0.2.0 tag → Suwayomi-next 下次构建自动用上
+```
+
+需要显式 pin 时（比如要复现某个旧版本），在 `build.yml` 的 `ext_runtime_url` input 里
+指定具体 URL，或在 prep 里改成按 tag 取。
+
+---
+
+## 9. 验收结果（2026-09-24）
+
+| # | 项 | 结果 | 证据 |
+| --- | --- | --- | --- |
+| V1 | 本仓独立构建 | ✅ | `./gradlew clean build` 绿；两个制品齐 |
+| V2 | AOSP 溯源 | ✅ | `META-INF/android-stub.properties` 逐字段与 P0 基线一致（`version=30.r03.1`） |
+| V3 | 桩去重 | ✅ | 16416 个 class，零重名；三个 `moduleName` 都已钉死 |
+| V4 | 共享源码制品 | ✅ | 51 个 `.kt`，含 `eu/kanade/tachiyomi/source/Source.kt`，**不含** `sandbox/Main.kt` |
+| V5 | 沙盒脱离服务端跑 | ✅ | `/health` → `{"ok":true,"extensions":192,"sources":1183}` |
+| V6 | 真实扩展执行 | ⚠️ 部分 | 列表 / 章节 / 章节图片 / 筛选页都真通（真实网络）；`getMangaDetails` 在 **MangaDex** 上报 `no suspend method getMangaDetails(1+1 args)`，但**基线 jar 报一模一样的错** → 既有问题，非本次引入 |
+| V7 | 桌面端到端 | ⏭️ | 未跑（需要部署整套发布布局；本次以 V5/V6 覆盖沙盒侧） |
+| V8 | Docker | ⏭️ | 本机无 Docker，未跑 |
+| V9 | Android | ⏳ | 需先发布 v0.1.0（脚本按 Release 资产解析） |
+| V10 | 静默失败已修 | ✅ | 故意设 `SUWAYOMI_SANDBOX_JAR=/不存在`，两条 warn 都出现：`…指向的扩展沙盒 jar 不存在，继续按发布布局查找` + `未找到扩展沙盒 jar（ext-runtime.jar），扩展功能不可用` |
+| V11 | Rust 侧 | ✅ | `cargo build --release -p suwayomi-server` 过；`cargo clippy --workspace --all-targets` **零告警** |
+| V12 | 发布链路 | ⏳ | 需先打 tag |
+
+### V1 的强证据：改名只动了三个文件名
+
+拿 P0 基线 jar（`Suwayomi-builds/Suwayomi-latest/bin/jvm-sandbox.jar`，45382030 B）与
+新产物（45381739 B）逐条目比：
+
+```
+条目数 旧/新: 25036 25036
+仅旧有: META-INF/suwayomi-jvm-sandbox.kotlin_module
+        META-INF/suwayomi-jvm-sandbox_android-compat.kotlin_module
+        META-INF/suwayomi-jvm-sandbox.android-compat_config.kotlin_module
+仅新有: META-INF/suwayomi-ext-runtime.kotlin_module
+        META-INF/suwayomi-ext-runtime_android-compat.kotlin_module
+        META-INF/suwayomi-ext-runtime_android-compat_config.kotlin_module
+内容大小不同的条目数: 0
+```
+
+**25036 个条目里只有 3 个改了名字，没有任何条目内容变化。** jar 文件本身小 291 字节，
+是这三个名字变短后 zip 的 deflate / 中央目录字节跟着变 —— 不是内容差异。
+再叠加 `.workbuddy-ai/baseline/verify-semantic.py` 的 `javap` 语义比对（0 处差异），
+「改名不改行为」这件事是**逐条目 + 逐方法体**双重确认的。
+
+### V6 的对照实验
+
+同一个 MangaDex 详情请求，在两个 jar 上各打 4 次：
+
+| jar | 结果 |
+| --- | --- |
+| 新 `ext-runtime.jar` | 4/4 `no suspend method getMangaDetails(1+1 args)` |
+| 基线 `jvm-sandbox.jar` | 4/4 **同一句错误** |
+
+所以这是该扩展自身与反射驱动层的既有不兼容（`1+1 args` 说明它用的是带 context
+parameter 的签名，反射按普通参数表找不到），与剥离无关，本次不修 ——
+按「不借机重写任何沙盒逻辑」的约定，留给后续单独处理。
+
+### Suwayomi-next 侧的验证
+
+- `.workbuddy/verify/ci_equiv.py`：**35/35**（prep / webui / pack / publish 逐条对齐 + 接线检查）。
+- `.workbuddy/verify/ci_pack_check.py`：**357/357**。
+- 两个脚本的基线都从「合并前那版」改成了 **HEAD（改动前）**：4d8a5b4 之后 runner 迁移
+  改了 targets 矩阵、发布说明被精简过，拿合并前那版对齐只会报一堆与本次无关的差异。
+  pack 一侧比的是「改动前 build.yml ↔ 改动后 build.yml」，并把 `jvm-sandbox/` 中间产物
+  与 `bin/jvm-sandbox.jar → bin/ext-runtime.jar` 这两处**预期差异**排除在比对之外。
+
