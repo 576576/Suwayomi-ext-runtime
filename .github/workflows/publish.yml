@@ -1,6 +1,12 @@
 name: Publish
 
-# 发布 ext-runtime 到 GitHub Packages：推 v* tag 触发，也可手动 workflow_dispatch。
+# 发布 ext-runtime 到 GitHub Packages + Release 资产：推 v* tag 触发，也可手动 workflow_dispatch。
+#
+# 版本号 = `<AOSP API level>.<本仓库主版本>.<修订>`，如 `30.1.0`。
+# 大版本跟着 android-stub 的公开 API 基线（pin 在 ext-runtime/android-stub/android-stub.properties），
+# 与 android-stub 自己的 `30.r03.1` 同一套思路 —— 看一眼版本号就知道它对应哪个 Android API。
+# 换 pin 忘改版本号会在「解析版本号」那步直接失败。
+#
 # 坐标、制品构成、认证与消费方式见 docs/EXTRACTION_RECORD.md
 
 on:
@@ -35,6 +41,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # 版本号 = <AOSP API level>.<本仓库主版本>.<修订>。
+      # 大版本跟着 android-stub 的公开 API 基线走（同 android-stub 的 `30.r03.1` 那套思路），
+      # 所以「这个 ext-runtime 对应哪个 Android API」看一眼版本号就知道。
+      # 这里**强制**两者一致：换 pin 忘了改版本号会直接红，不会静默发错。
       - name: 解析版本号
         id: ver
         env:
@@ -49,11 +59,21 @@ jobs:
             V="$INPUT_VERSION"
           fi
           if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::版本号格式非法：$V"
+            echo "::error::版本号格式非法：$V（应为 <AOSP API level>.<主版本>.<修订>，如 30.1.0）"
             exit 1
           fi
+
+          API="$(sed -n 's/^aospApiLevel=//p' ext-runtime/android-stub/android-stub.properties)"
+          test -n "$API" || { echo "::error::读不到 aospApiLevel"; exit 1; }
+          if [ "${V%%.*}" != "$API" ]; then
+            echo "::error::版本号大版本必须是 AOSP API level：版本 $V 的大版本是 ${V%%.*}，而 pin 里是 $API"
+            echo "          改 pin 就要同时改版本号（见 ext-runtime/android-stub/android-stub.properties 尾部说明）"
+            exit 1
+          fi
+
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "发布版本：$V"
+          echo "aosp_api_level=$API" >> "$GITHUB_OUTPUT"
+          echo "发布版本：$V（对应 Android API $API）"
 
       - name: 构建
         run: ./gradlew --no-daemon --console=plain build

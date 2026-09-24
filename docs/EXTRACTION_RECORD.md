@@ -220,6 +220,23 @@ ext-runtime 照抄这个模式：`scripts/resolve-ext-runtime.sh`，输出 `ext_
 
 ## 8. 版本与发布约定
 
+### 版本号 = `<AOSP API level>.<本仓库主版本>.<修订>`
+
+大版本**跟着 `android-stub` 的公开 API 基线走**，与 android-stub 自己的 `30.r03.1`
+是同一套思路（那个是 `<api>.<包修订>.<剥离修订>`）：看一眼版本号就知道它对应哪个 Android API。
+
+| 版本 | 含义 |
+| --- | --- |
+| `30.1.0` | 对应 AOSP API 30（`platform-30_r03`），ext-runtime 自己的第 1 版 |
+| `30.2.0` | 还是 API 30，ext-runtime 的第 2 版 |
+| `31.0.0` | AOSP 基线升到 API 31 —— 大版本跟着走，后面的计数归零重来 |
+
+**`publish.yml` 强制这两者一致**：它从 `ext-runtime/android-stub/android-stub.properties`
+读 `aospApiLevel`，与 tag 的大版本比对，不一致直接红。换 pin 忘改版本号不会静默发错版。
+
+> 注意别把后两位当成 AOSP 包修订（`r03` 那种）。包修订只在换基线时动，而 ext-runtime
+> 自己的代码每次发版都要有新版本号 —— 所以后两位是本仓库的发布计数，不是 AOSP 的。
+
 本仓推 `v<V>` tag → `publish.yml` 发 `<V>` 到 Packages + Release 资产。
 
 Suwayomi-next 每次构建**动态解析最新** ext-runtime 版本（与它对待 WebUI 的方式一致），

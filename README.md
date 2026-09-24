@@ -40,6 +40,21 @@ ext-runtime/
 - 首次构建会从 `dl.google.com` 下载 AOSP 公开 API 包（`platform-30_r03.zip`，约 52 MB），按 `android-stub.properties` 里的 sha256 校验后剥离生成 `android-stub`。可用 `-PaospPackageUrl=<镜像>` 换源，pin 仍然生效。
 - 产物里的 `META-INF/android-stub.properties` 记录了这次用的是哪份 AOSP 基线（版本号 = `<api>.<包修订>.<剥离修订>`）。
 
+## 版本号
+
+**`<AOSP API level>.<本仓库主版本>.<修订>`**，如 `30.1.0` —— 大版本跟着 `android-stub` 的
+公开 API 基线（`ext-runtime/android-stub/android-stub.properties` 里的 `aospApiLevel`），
+与 android-stub 自己的 `30.r03.1` 同一套思路：看一眼版本号就知道它对应哪个 Android API。
+
+| 版本 | 含义 |
+| --- | --- |
+| `30.1.0` | 对应 AOSP API 30（`platform-30_r03`），ext-runtime 自己的第 1 版 |
+| `30.2.0` | 还是 API 30，ext-runtime 的第 2 版 |
+| `31.0.0` | AOSP 基线升到 API 31，大版本跟着走、后面的计数归零 |
+
+`publish.yml` 会**强制**tag 的大版本等于 pin 里的 `aospApiLevel`，不一致直接失败 ——
+换基线忘改版本号不会静默发错版。
+
 ## 制品与消费方式
 
 打 `v<V>` tag（或手动触发 `publish.yml`）后，两个制品**同时**发到 **GitHub Release 资产**和
