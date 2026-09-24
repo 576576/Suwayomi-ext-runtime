@@ -13,6 +13,14 @@ on:
   push:
     tags:
       - 'v*'
+    # 纯文档改动不该跑发布流水线。
+    # 注意：GitHub 对 tag push **不评估** paths 过滤，这条只在分支 push 上生效；
+    # 本工作流目前只监听 tag，所以它的作用是「声明意图」+ 将来若加 branches 会自动生效。
+    # 要真正拦住「为了改文档打的 tag」，不要打 v* tag 即可。
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.workbuddy-ai/**'
   workflow_dispatch:
     inputs:
       version:
