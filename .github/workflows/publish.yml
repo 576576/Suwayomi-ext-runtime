@@ -103,9 +103,20 @@ jobs:
       - name: 发布到 GitHub Packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.ver.outputs.version }}
         run: |
-          ./gradlew --no-daemon --console=plain publish \
-            -PextRuntimeVersion="${{ steps.ver.outputs.version }}"
+          set -euo pipefail
+          # Maven 包版本在 GitHub Packages 上**不可变**：同一个版本重复发布必定 409。
+          # 重跑一个已发布过的 tag（或只为补发 Release 资产而手动触发）是正常操作，
+          # 所以先探一下、已存在就跳过 —— 而不是让 publish 整个红掉，连带 jre 那六格
+          # 一起 skipped（Release 资产那步本来就是 --clobber 覆盖的）。
+          PKG="com.github.576576.suwayomi-ext-runtime.ext-runtime"
+          if gh api "users/${GITHUB_REPOSITORY%%/*}/packages/maven/$PKG/versions" \
+               --jq '.[].name' 2>/dev/null | grep -qx "$V"; then
+            echo "Packages 上已有 $V（版本不可变），跳过发布"
+            exit 0
+          fi
+          ./gradlew --no-daemon --console=plain publish -PextRuntimeVersion="$V"
 
       - name: 生成校验和
         run: |
