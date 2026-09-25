@@ -20,12 +20,19 @@ bash scripts/make-jre.sh windows x64 /tmp/jre   # <windows|linux|mac> <x64|aarch
 
 ## 版本号
 
-`<AOSP API level>.<主版本>.<修订>`，例如 `30.1.0`。大版本跟着 `android-stub` 的 API 基线走；
-`publish.yml` 强制 tag 大版本等于 pin 的 `aospApiLevel`，不一致直接失败。
+`<AOSP API level>.{提交数/100}.{提交数%100}`，例如 `30.0.47`；`versionCode = 本仓提交数 + 1000`。
+
+大版本仍跟着 `android-stub` 的 API 基线走 —— `release.yml` 直接拿 pin 里的 `aospApiLevel` 当大版本，换 pin 它会自动跟着变。后两位是本仓的提交计数。
 
 ## 制品与消费
 
-打 `v<V>` tag 后发布到 **GitHub Release 资产**（免鉴权）与 **GitHub Packages**：
+推 main 或手动 dispatch 后发布到 **GitHub Release 资产**（免鉴权）与 **GitHub Packages**，
+
+| 通道 | tag | 触发方式 |
+| --- | --- | --- |
+| release | `v30.0.47` | 手动 dispatch |
+| beta | `v30.0.47-beta.<run_id>` | 手动 dispatch |
+| alpha | `30.0.47-alpha.<run_id>` | 推送 main 自动（只出 jar 与两份 JRE，不发 Packages）／手动 dispatch |
 
 | 制品 | 用途 |
 |---|---|

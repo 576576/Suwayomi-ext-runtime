@@ -1,0 +1,281 @@
+name: Release
+
+# 发布 ext-runtime：GitHub Packages（Maven 坐标）+ GitHub Release 资产。
+#
+# 触发（与主仓同款拆法，不再由 tag 驱动）：
+#   推送 main         → 自动 alpha：出两个 jar + 两个主要平台的裁剪 JRE，不发 Packages
+#   workflow_dispatch → alpha / beta / release（通道 + 可选全量 JRE / Packages）
+# 编译与打包委托给可复用工作流 .github/workflows/build.yml；本文件只算版本号、挑 JRE
+# 平台、把构建产物发布成 Release。
+#
+# 版本号套主仓规则，只换基线与来源（本仓自己的计数，不跟主仓）：
+#   versionCode = 本仓库提交数 + 1000                      （主仓是 +3000）
+#   版本名      = <aospApiLevel>.{count/100}.{count%100:02d}（如 30.0.47）
+#                 大版本跟着 android-stub 的公开 API 基线（pin 在
+#                 ext-runtime/android-stub/android-stub.properties），与 android-stub
+#                 自己的 30.r03.1 同一套思路：看一眼版本号就知道对应哪个 Android API；
+#                 后两位是本仓提交数（主仓的后两位也是它自己的提交数）。
+#   tag     release → v{版本名} / beta → v{版本名}-beta.{run_id} / alpha → {版本名}-alpha.{run_id}
+#
+# 坐标、制品构成、认证与消费方式见 docs/EXTRACTION_RECORD.md
+
+on:
+  push:
+    branches: [main]
+    # 纯文档改动不该跑发布流水线（一次要出两个 jar + 多份 jlink）。
+    # `*.md` 与 `**/*.md` 两条都给：`**/` 能否匹配"零级目录"（即命中根目录的
+    # README.md）在 glob 实现之间有歧义，两条并置后覆盖到根目录与嵌套。
+    paths-ignore:
+      - '*.md'
+      - '**/*.md'
+      - 'docs/**'
+      - '.workbuddy-ai/**'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 发布通道
+        type: choice
+        options: [alpha, beta, release]
+        default: alpha
+      build_jre:
+        description: 产出全部六份裁剪 JRE（逐个原生 runner，较慢）
+        type: boolean
+        default: true
+      publish_packages:
+        description: 发布到 GitHub Packages
+        type: boolean
+        default: true
+      version_count:
+        description: 版本计数（留空用仓库提交数）
+        type: string
+        default: ''
+      release_notes:
+        description: 发行说明
+        type: string
+        default: ''
+
+permissions:
+  contents: write # 创建/更新 GitHub Release 并挂载制品
+  packages: write # 推 Maven 包
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prep:
+    name: 准备构建参数
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      flow: ${{ steps.out.outputs.flow }}
+      channel: ${{ steps.out.outputs.channel }}
+      version_name: ${{ steps.out.outputs.version_name }}
+      version_code: ${{ steps.out.outputs.version_code }}
+      count: ${{ steps.out.outputs.count }}
+      tag: ${{ steps.out.outputs.tag }}
+      prerelease: ${{ steps.out.outputs.prerelease }}
+      jre_targets: ${{ steps.out.outputs.jre_targets }}
+      publish_packages: ${{ steps.out.outputs.publish_packages }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: out
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FLOW="manual"
+            CHANNEL="${{ github.event.inputs.channel }}"
+            COUNT="${{ github.event.inputs.version_count }}"
+            BUILD_JRE="${{ github.event.inputs.build_jre }}"
+            PUB_PKG="${{ github.event.inputs.publish_packages }}"
+          else
+            # 推送 main：自动 alpha。产两个 jar + 两个主要平台（windows-x64 /
+            # linux-x64）的裁剪 JRE —— 主仓 (+jre) 包在用的就是这两份，其余四份等
+            # 手动发版时再出；Packages 不发（版本不可变，每次提交都发会迅速堆满）。
+            FLOW="auto"
+            CHANNEL="alpha"
+            COUNT=""
+            BUILD_JRE="false"
+            PUB_PKG="false"
+          fi
+
+          # defense-in-depth：input 缺失时 github.event.inputs.X 渲染成空串（不是 false）
+          BUILD_JRE="${BUILD_JRE:-false}"
+          PUB_PKG="${PUB_PKG:-false}"
+
+          if [ -z "$COUNT" ]; then COUNT="$(git rev-list --count HEAD)"; fi
+
+          VER_CODE="$((COUNT+1000))"
+
+          # 大版本 = android-stub 的公开 API 基线。以前是「版本号 vs pin」的强制校验
+          # （手填版本可能和 pin 不一致）；现在大版本直接由 pin 推导，两者天然一致，
+          # 这条断言只剩「pin 读得出来」这一件事。
+          API="$(sed -n 's/^aospApiLevel=//p' ext-runtime/android-stub/android-stub.properties)"
+          if ! printf '%s' "$API" | grep -Eq '^[0-9]+$'; then
+            echo "::error::读不到 ext-runtime/android-stub/android-stub.properties 里的 aospApiLevel"
+            exit 1
+          fi
+
+          VER_NAME="${API}.$((COUNT/100)).$(printf '%02d' $((COUNT%100)))"
+
+          case "$CHANNEL" in
+            release) TAG="v${VER_NAME}";                          PRE="false" ;;
+            beta)    TAG="v${VER_NAME}-beta.${{ github.run_id }}"; PRE="false" ;;
+            alpha)   TAG="${VER_NAME}-alpha.${{ github.run_id }}"; PRE="true" ;;
+            *)       echo "::error::未知通道 $CHANNEL"; exit 1 ;;
+          esac
+
+          # 裁剪 JRE 的矩阵。只有这一格用 zulu：Adoptium 对 windows/aarch64 没发 JDK 25
+          # 的任何制品（jdk/jre/jmods 全 404），而 Zulu 的归档自带 jmods/。见 make-jre.sh 头注释。
+          # 自动构建只出主仓 (+jre) 包在用的两份。
+          JRE_INCLUDE="$(python3 - "$BUILD_JRE" "$FLOW" <<'PY'
+          import json, sys
+          build_jre, flow = sys.argv[1], sys.argv[2]
+          six = [
+              {"jre_os": "windows", "jre_arch": "x64",     "os": "windows-latest",   "jdk": "temurin"},
+              {"jre_os": "windows", "jre_arch": "aarch64", "os": "windows-11-arm",   "jdk": "zulu"},
+              {"jre_os": "linux",   "jre_arch": "x64",     "os": "ubuntu-latest",    "jdk": "temurin"},
+              {"jre_os": "linux",   "jre_arch": "aarch64", "os": "ubuntu-24.04-arm", "jdk": "temurin"},
+              {"jre_os": "mac",     "jre_arch": "x64",     "os": "macos-15-intel",   "jdk": "temurin"},
+              {"jre_os": "mac",     "jre_arch": "aarch64", "os": "macos-15",         "jdk": "temurin"},
+          ]
+          if flow == "auto":
+              keep = {("windows", "x64"), ("linux", "x64")}
+              inc = [c for c in six if (c["jre_os"], c["jre_arch"]) in keep]
+          elif build_jre == "true":
+              inc = six
+          else:
+              inc = []
+          print(json.dumps(inc))
+          PY
+          )"
+
+          {
+            echo "flow=$FLOW"
+            echo "channel=$CHANNEL"
+            echo "version_name=$VER_NAME"
+            echo "version_code=$VER_CODE"
+            echo "count=$COUNT"
+            echo "tag=$TAG"
+            echo "prerelease=$PRE"
+            echo "jre_targets=$JRE_INCLUDE"
+            echo "publish_packages=$PUB_PKG"
+          } >> "$GITHUB_OUTPUT"
+          echo "$FLOW 发布: $CHANNEL $VER_NAME (code $VER_CODE, commits $COUNT) -> $TAG"
+          echo "   jre=$JRE_INCLUDE packages=$PUB_PKG"
+
+  build:
+    name: 构建（复用 build.yml）
+    needs: prep
+    # 被调工作流的权限**不能超过调用方**：推 Maven 包要 packages: write，不显式给就是 403
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build.yml
+    with:
+      version_name: ${{ needs.prep.outputs.version_name }}
+      version_code: ${{ needs.prep.outputs.version_code }}
+      channel: ${{ needs.prep.outputs.channel }}
+      publish_packages: ${{ needs.prep.outputs.publish_packages == 'true' }}
+      jre_targets: ${{ needs.prep.outputs.jre_targets }}
+
+  publish:
+    name: 发布 ${{ needs.prep.outputs.channel }} (${{ needs.prep.outputs.version_name }})
+    needs: [prep, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: 收到的构建产物
+        run: ls -laR artifacts
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FLOW: ${{ needs.prep.outputs.flow }}
+          TAG: ${{ needs.prep.outputs.tag }}
+          VER: ${{ needs.prep.outputs.version_name }}
+          CH: ${{ needs.prep.outputs.channel }}
+          PRE: ${{ needs.prep.outputs.prerelease }}
+          PUB_PKG: ${{ needs.prep.outputs.publish_packages }}
+          NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          # release 通道同版本重复发布：先删旧 tag/release（alpha/beta 的 tag 天然唯一，不删）
+          if [ "$CH" = "release" ] && gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag || true
+          fi
+
+          # 资产可能来自多个 artifact（dist 与每份 JRE 各一份），且
+          # download-artifact 的目录层级会跟着上传时的 path 走 —— 递归收集，
+          # 不假设扁平结构。
+          FILES=()
+          while IFS= read -r f; do FILES+=("$f"); done < <(find artifacts -type f | sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "::error::没有需要发布的资产"
+            exit 1
+          fi
+
+          BODY="ext-runtime \`$VER\`"
+          if [ "$PUB_PKG" = "true" ]; then
+            BODY="$BODY
+          - GitHub Packages：\`com.github.576576.suwayomi-ext-runtime:ext-runtime:$VER\`"
+          else
+            BODY="$BODY
+          - 本次未发布 GitHub Packages（自动构建只在 alpha 出 Release 资产）"
+          fi
+          BODY="$BODY
+          - Release 资产：\`ext-runtime-$VER.jar\`、\`ext-runtime-$VER-shared-sources.jar\`、\`ext-runtime-$VER.sha256\`"
+
+          NOTES="${NOTES//$'\r'/}"
+          if [ -n "$NOTES" ]; then
+            BODY="$BODY
+
+          $(printf '%b' "$NOTES")"
+          fi
+
+          gh release create "$TAG" "${FILES[@]}" \
+            --title "v$VER ($CH)" \
+            --notes "## ext-runtime $VER · $CH
+          $BODY" \
+            --prerelease="$PRE" \
+            --generate-notes
+      - name: 小结
+        env:
+          VER: ${{ needs.prep.outputs.version_name }}
+          TAG: ${{ needs.prep.outputs.tag }}
+          PUB_PKG: ${{ needs.prep.outputs.publish_packages }}
+        run: |
+          {
+            echo "### 已发布 \`$VER\` → \`$TAG\`"
+            echo
+            if [ "$PUB_PKG" = "true" ]; then
+              echo '**GitHub Packages**（Gradle 依赖解析，跨仓库需 PAT classic + `read:packages`）'
+              echo '```kotlin'
+              echo 'repositories {'
+              echo '    maven {'
+              echo '        url = uri("https://maven.pkg.github.com/576576/Suwayomi-ext-runtime")'
+              echo '        credentials {'
+              echo '            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")'
+              echo '            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("EXT_RUNTIME_TOKEN")'
+              echo '        }'
+              echo '    }'
+              echo '}'
+              echo 'dependencies {'
+              echo "    implementation(\"com.github.576576.suwayomi-ext-runtime:ext-runtime:$VER\")"
+              echo '}'
+              echo '```'
+              echo
+            fi
+            echo '**Release 资产**（免鉴权，直接 curl）'
+            echo '```bash'
+            echo "curl -fLO ${{ github.server_url }}/${{ github.repository }}/releases/download/${TAG}/ext-runtime-${VER}.jar"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

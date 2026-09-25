@@ -1,0 +1,166 @@
+name: Build
+
+# 可复用构建工作流（workflow_call）：jar / 共享源码包 / 裁剪 JRE / GitHub Packages 都
+# 在这里产出。调用方 release.yml 负责算版本号、挑 JRE 平台、把资产挂成 Release ——
+# 与主仓 Suwayomi-next 同款拆法（那边是 build.yml + release.yml 两个文件）。
+#
+# 资产名固定 `ext-runtime-<V>.jar` / `ext-runtime-jre-<V>-<os>-<arch>.tar.gz`，
+# **不带通道段**：版本 V 由调用方算好，通道靠 tag 区分（主仓要带通道段是因为 beta 与
+# release 共用 3.y.z 版本名）。主仓 scripts/resolve-ext-runtime.sh 按这个形状反解版本
+# 号，改资产名会连带失效。
+#
+# 坐标、制品构成、认证与消费方式见 docs/EXTRACTION_RECORD.md
+
+on:
+  workflow_call:
+    inputs:
+      version_name:
+        description: 版本名（三段 semver，如 30.0.47；进 Maven 坐标与资产名）
+        required: true
+        type: string
+      version_code:
+        description: 版本代号（本仓库提交数 + 1000），仅进日志
+        required: true
+        type: string
+      channel:
+        description: alpha / beta / release（仅用于日志）
+        required: true
+        type: string
+      publish_packages:
+        description: 是否发布到 GitHub Packages（Maven 坐标发布后不可覆盖，自动构建跳过）
+        required: false
+        type: boolean
+        default: true
+      jre_targets:
+        description: 裁剪 JRE 的矩阵 include 数组（JSON 字符串，元素含 jre_os/jre_arch/os/jdk；空数组表示不出 JRE）
+        required: true
+        type: string
+
+jobs:
+  jar:
+    name: 出 jar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # 推 Maven 包
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 构建
+        run: ./gradlew --no-daemon --console=plain build
+
+      # 制品不变量。AOSP 基线一旦要升级，这里必须同步改 —— 有意为之。
+      - name: 校验制品
+        run: |
+          set -euo pipefail
+          LIB=ext-runtime/build/libs
+          test -f "$LIB/ext-runtime.jar"
+          test -f "$LIB/ext-runtime-shared-sources.jar"
+
+          echo "--- android-stub 基线（应为 30.r03.1）---"
+          unzip -p "$LIB/ext-runtime.jar" META-INF/android-stub.properties | tee /tmp/stub.properties
+          grep -q '^version=30\.r03\.1$' /tmp/stub.properties \
+            || { echo "::error::AOSP 基线与预期不一致"; exit 1; }
+
+          echo "--- 共享源码树制品内容 ---"
+          unzip -l "$LIB/ext-runtime-shared-sources.jar" | head -20
+          unzip -l "$LIB/ext-runtime-shared-sources.jar" | grep -q 'eu/kanade/tachiyomi/' \
+            || { echo "::error::shared-sources 制品缺少 eu/kanade/tachiyomi/**"; exit 1; }
+          unzip -l "$LIB/ext-runtime-shared-sources.jar" | grep -q 'suwayomi/tachidesk/' \
+            || { echo "::error::shared-sources 制品缺少 suwayomi/tachidesk/**"; exit 1; }
+
+      - name: 发布到 GitHub Packages
+        # 自动构建（每次推 main）跳过：Maven 版本不可变，每个 commit 一个版本会把
+        # Packages 迅速堆满，而那时并没有人需要它的 Maven 坐标。
+        if: inputs.publish_packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          # Maven 包版本在 GitHub Packages 上**不可变**：同一个版本重复发布必定 409。
+          # 重跑一次同 commit 的流程（或只为补发 Release 资产而手动触发）是正常操作，
+          # 所以先探一下、已存在就跳过 —— 而不是让 publish 整个红掉。
+          PKG="com.github.576576.suwayomi-ext-runtime.ext-runtime"
+          if gh api "users/${GITHUB_REPOSITORY%%/*}/packages/maven/$PKG/versions" \
+               --jq '.[].name' 2>/dev/null | grep -qx "$V"; then
+            echo "Packages 上已有 $V（版本不可变），跳过发布"
+            exit 0
+          fi
+          ./gradlew --no-daemon --console=plain publish -PextRuntimeVersion="$V"
+
+      - name: 生成校验和
+        run: |
+          set -euo pipefail
+          LIB=ext-runtime/build/libs
+          V="${{ inputs.version_name }}"
+          mkdir -p dist
+          cp "$LIB/ext-runtime.jar"                "dist/ext-runtime-$V.jar"
+          cp "$LIB/ext-runtime-shared-sources.jar" "dist/ext-runtime-$V-shared-sources.jar"
+          ( cd dist && sha256sum "ext-runtime-$V.jar" "ext-runtime-$V-shared-sources.jar" \
+              > "ext-runtime-$V.sha256" )
+          cat "dist/ext-runtime-$V.sha256"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+
+  # 裁剪 JRE：**必须原生 runner**，jlink 不能跨平台生成镜像（详见 scripts/make-jre.sh）。
+  jre:
+    name: 裁剪 JRE（${{ matrix.jre_os }}-${{ matrix.jre_arch }}）
+    # 空矩阵会让 Actions 直接报错，不出 JRE 时显式跳过
+    if: inputs.jre_targets != '[]'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false # 一个平台挂掉不该拖累其余几个
+      matrix:
+        include: ${{ fromJson(inputs.jre_targets) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: ${{ matrix.jdk }}
+          java-version: '25'
+
+      - name: 裁剪 JRE
+        shell: bash
+        run: bash scripts/make-jre.sh "${{ matrix.jre_os }}" "${{ matrix.jre_arch }}" out/jre
+
+      - name: 冒烟并打包
+        shell: bash
+        env:
+          JRE_OS: ${{ matrix.jre_os }}
+          JRE_ARCH: ${{ matrix.jre_arch }}
+          V: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          # Windows 的启动器带 .exe 后缀，其余不带
+          if [ "$JRE_OS" = "windows" ]; then JAVA=out/jre/bin/java.exe; else JAVA=out/jre/bin/java; fi
+          test -f "$JAVA" || { echo "::error::产出的 JRE 缺 $JAVA"; ls -R out/jre | head -30; exit 1; }
+          test -f out/jre/release || { echo "::error::产出的 JRE 缺 release 文件"; exit 1; }
+
+          # 真跑一次：magic/架构自检在 make-jre.sh 里已经做了，这里验它**能起来**
+          "$JAVA" -version
+
+          ASSET="ext-runtime-jre-$V-$JRE_OS-$JRE_ARCH.tar.gz"
+          # 归档里把 jre/ 放在根：消费方 `tar -xzf <资产> -C <stage>` 直接得到 <stage>/jre
+          tar -czf "$ASSET" -C out jre
+          ls -la "$ASSET"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: jre-${{ matrix.jre_os }}-${{ matrix.jre_arch }}
+          path: ext-runtime-jre-${{ inputs.version_name }}-${{ matrix.jre_os }}-${{ matrix.jre_arch }}.tar.gz

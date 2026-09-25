@@ -220,31 +220,39 @@ ext-runtime 照抄这个模式：`scripts/resolve-ext-runtime.sh`，输出 `ext_
 
 ## 8. 版本与发布约定
 
-### 版本号 = `<AOSP API level>.<本仓库主版本>.<修订>`
+### 版本号 = `<AOSP API level>.{提交数/100}.{提交数%100}`
+
+`versionCode = 本仓提交数 + 1000`。规则照 Suwayomi-next 那套（把提交数折进版本名），
+只是基线是自己的：主仓 `+3000` / `3.y.z`，本仓 `+1000` / `<api>.y.z`。
 
 大版本**跟着 `android-stub` 的公开 API 基线走**，与 android-stub 自己的 `30.r03.1`
 是同一套思路（那个是 `<api>.<包修订>.<剥离修订>`）：看一眼版本号就知道它对应哪个 Android API。
 
 | 版本 | 含义 |
 | --- | --- |
-| `30.1.0` | 对应 AOSP API 30（`platform-30_r03`），ext-runtime 自己的第 1 版 |
-| `30.2.0` | 还是 API 30，ext-runtime 的第 2 版 |
-| `31.0.0` | AOSP 基线升到 API 31 —— 大版本跟着走，后面的计数归零重来 |
+| `30.0.47` | 对应 AOSP API 30（`platform-30_r03`），ext-runtime 提交数 47 |
+| `31.0.52` | AOSP 基线升到 API 31 —— 大版本跟着 pin 自动走，后面的计数继续往前 |
 
-**`publish.yml` 强制这两者一致**：它从 `ext-runtime/android-stub/android-stub.properties`
-读 `aospApiLevel`，与 tag 的大版本比对，不一致直接红。换 pin 忘改版本号不会静默发错版。
+`release.yml` 的 prep 直接从 `ext-runtime/android-stub/android-stub.properties` 读
+`aospApiLevel` 当大版本：不再是「版本号手填错了会不会发错版」的问题，大版本由 pin 推导，
+换 pin 自动换，不存在两者漂移。
 
 > 注意别把后两位当成 AOSP 包修订（`r03` 那种）。包修订只在换基线时动，而 ext-runtime
-> 自己的代码每次发版都要有新版本号 —— 所以后两位是本仓库的发布计数，不是 AOSP 的。
+> 自己的代码每次发版都要有新版本号 —— 所以后两位是本仓库的计数，不是 AOSP 的。
 
-本仓推 `v<V>` tag → `publish.yml` 发 `<V>` 到 Packages + Release 资产。
+本仓推 main（自动 alpha）或手动 dispatch → `build.yml` 产出资产 → `release.yml` 发布。
+三通道共用同一个版本名，差异落在 tag 上（表见 README）。
 
 Suwayomi-next 每次构建**动态解析最新** ext-runtime 版本（与它对待 WebUI 的方式一致），
 所以升级 ext-runtime **不需要改 Suwayomi-next 的任何文件**：
 
 ```
-改 ext-runtime 源码 → 在本仓打 v30.2.0 tag → Suwayomi-next 下次构建自动用上
+改 ext-runtime 源码 → 推 main（自动 alpha）或手动 dispatch → Suwayomi-next 下次构建自动用上
 ```
+
+通道隔离：Suwayomi-next 正式发布只认非预发布版本（`resolve-ext-runtime.sh --stable`），
+alpha/beta 跟最新构建（`--build`）—— 与它挑 WebUI 的方式一致。所以要它的 release 包吃到
+这份改动，得手动 dispatch 一次 release/beta 通道。
 
 需要显式 pin 时（比如要复现某个旧版本），在 `build.yml` 的 `ext_runtime_url` input 里
 指定具体 URL，或在 prep 里改成按 tag 取。
@@ -328,7 +336,7 @@ Suwayomi-next，现在都在本仓：脚本在 `scripts/`，验证脚本在 `.wo
    `NoClassDefFoundError`，而且**只在 `+jre` 包上出现**（开发机跑的是完整 JDK）。
 2. **jlink 不能跨平台编译。** 产出的 `bin/java` 与原生库取自宿主 JDK，不是
    `--module-path` 里的 jmods。所以每个 `(os, arch)` 都需要一个原生 runner —— 这件事
-   本仓做正合适，因为 `publish.yml` 本来就按平台铺矩阵；反过来，留在 Suwayomi-next 就
+   本仓做正合适，因为 JRE 那格本来就按平台铺矩阵；反过来，留在 Suwayomi-next 就
    意味着那边的主构建矩阵被一个与它无关的约束（runner 必须与目标同架构）绑架。
 3. **消费侧更简单。** 资产是**按版本 + 平台**命名的，Suwayomi-next 只按
    `<V>-<os>-<arch>` 下载解开，不需要装 JDK、不需要 jmods 的下载兜底逻辑、也不会
@@ -336,8 +344,8 @@ Suwayomi-next，现在都在本仓：脚本在 `scripts/`，验证脚本在 `.wo
 
 ### 发布形态
 
-`publish.yml` 的 `jre` job（`needs: publish`，六格矩阵）在 `publish` 建好的那个 Release
-里挂六份资产：
+`build.yml` 的 `jre` job（被 `release.yml` 调用，矩阵 <6 by default，自动构建只跑两格）
+把 tar.gz 上传成 artifact，`release.yml` 的 publish 负责一次性挂到那个 Release 里：
 
 ```
 ext-runtime-jre-<V>-windows-x64.tar.gz      解压后顶层就是 jre/

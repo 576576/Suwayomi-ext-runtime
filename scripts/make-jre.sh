@@ -14,7 +14,7 @@
 # 运行时会静默缺模块（表现为 `NoClassDefFoundError`，而且只在 `+jre` 包上出现）。
 #
 # 消费方（Suwayomi-next）按 `<V>` + `<os>` + `<arch>` 直接下载对应资产，
-# 见 .github/workflows/publish.yml 的 jre job。
+# 见 .github/workflows/build.yml 的 jre job。
 #
 # 三件事决定了这个脚本长这样：
 #
@@ -33,7 +33,7 @@
 #    与原生库取自**宿主** JDK，不取自 `--module-path`。所以下面先校验宿主平台与
 #    目标平台一致，不一致直接报错退出：宁可让 CI 明确失败，也不要产出一个
 #    "看着打包成功、装上就 UnsatisfiedLinkError" 的运行时。
-#    （CI 因此给每个平台分配**原生** runner，见 .github/workflows/publish.yml 的 jre job 矩阵。）
+#    （CI 因此给每个平台分配**原生** runner，见 .github/workflows/build.yml 的 jre job 矩阵。）
 #    两道闸：入口处比「宿主 vs 目标」，末尾处核「产物 magic + 架构」
 #    （`assert_native_artifact`，被 .workbuddy-ai/verify/check_jre_arch.sh 单测）。
 #    **宿主架构必须问 JDK 二进制，不能问 `uname -m`** —— Windows ARM64 runner 上的
