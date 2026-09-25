@@ -260,6 +260,7 @@ class ScrollableResultSet(
 
     override fun isFirst(): Boolean = cursor - 1 < resultSetLength
 
+    @Deprecated("Deprecated in Java", ReplaceWith("getBigDecimal(columnIndex)"))
     override fun getBigDecimal(
         columnIndex: Int,
         scale: Int,
@@ -268,6 +269,7 @@ class ScrollableResultSet(
         notImplemented()
     }
 
+    @Deprecated("Deprecated in Java", ReplaceWith("getBigDecimal(columnLabel)"))
     override fun getBigDecimal(
         columnLabel: String?,
         scale: Int,
@@ -967,8 +969,10 @@ class ScrollableResultSet(
 
     override fun getDouble(columnLabel: String?): Double = obj(columnLabel) as Double
 
+    @Deprecated("Deprecated in Java", ReplaceWith("getCharacterStream(columnIndex)"))
     override fun getUnicodeStream(columnIndex: Int): InputStream = getBinaryStream(columnIndex)
 
+    @Deprecated("Deprecated in Java", ReplaceWith("getCharacterStream(columnLabel)"))
     override fun getUnicodeStream(columnLabel: String?): InputStream = getBinaryStream(columnLabel)
 
     override fun rowInserted() = false

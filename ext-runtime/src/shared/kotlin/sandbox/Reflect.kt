@@ -186,12 +186,17 @@ fun callSuspendMethod(obj: Any, name: String, vararg args: Any?): Any? {
 }
 
 /** Maps a wrapper type to its primitive, if any (JVM methods use `int` etc.). */
+//
+// 注意：这里**不能**照编译器提示写成 `Int::class.java` —— 那是 primitive `int` 的 Class，
+// 会让本函数退化成恒等映射（`Integer.TYPE -> int.class`），反射按 `int` 找方法时全部失配。
+// `javaObjectType` 才是包装类 `java.lang.Integer` 的 Class 对象，与原来的
+// `java.lang.Integer::class.java` 等价，且不触发「不建议在 Kotlin 中使用」的警告。
 private fun primitiveOf(c: Class<*>): Class<*> = when (c) {
-    java.lang.Integer::class.java -> java.lang.Integer.TYPE
-    java.lang.Long::class.java -> java.lang.Long.TYPE
-    java.lang.Float::class.java -> java.lang.Float.TYPE
-    java.lang.Double::class.java -> java.lang.Double.TYPE
-    java.lang.Boolean::class.java -> java.lang.Boolean.TYPE
+    Int::class.javaObjectType -> java.lang.Integer.TYPE
+    Long::class.javaObjectType -> java.lang.Long.TYPE
+    Float::class.javaObjectType -> java.lang.Float.TYPE
+    Double::class.javaObjectType -> java.lang.Double.TYPE
+    Boolean::class.javaObjectType -> java.lang.Boolean.TYPE
     else -> c
 }
 
@@ -242,11 +247,12 @@ fun convert(target: Class<*>, value: Any?): Any? {
     if (value == null) return null
     return when {
         target.isInstance(value) -> value
-        target == java.lang.Long::class.java || target == java.lang.Long.TYPE -> (value as? Number)?.toLong() ?: 0L
-        target == java.lang.Integer::class.java || target == java.lang.Integer.TYPE -> (value as? Number)?.toInt() ?: 0
-        target == java.lang.Float::class.java || target == java.lang.Float.TYPE -> (value as? Number)?.toFloat() ?: 0f
-        target == java.lang.Double::class.java || target == java.lang.Double.TYPE -> (value as? Number)?.toDouble() ?: 0.0
-        target == java.lang.Boolean::class.java || target == java.lang.Boolean.TYPE -> (value as? Boolean) ?: false
+        // 同 `primitiveOf`：用 `javaObjectType`（包装类的 Class），不要写成 `Long::class.java`
+        target == Long::class.javaObjectType || target == java.lang.Long.TYPE -> (value as? Number)?.toLong() ?: 0L
+        target == Int::class.javaObjectType || target == java.lang.Integer.TYPE -> (value as? Number)?.toInt() ?: 0
+        target == Float::class.javaObjectType || target == java.lang.Float.TYPE -> (value as? Number)?.toFloat() ?: 0f
+        target == Double::class.javaObjectType || target == java.lang.Double.TYPE -> (value as? Number)?.toDouble() ?: 0.0
+        target == Boolean::class.javaObjectType || target == java.lang.Boolean.TYPE -> (value as? Boolean) ?: false
         else -> value.toString()
     }
 }

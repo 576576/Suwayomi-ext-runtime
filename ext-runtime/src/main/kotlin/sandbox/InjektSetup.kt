@@ -6,6 +6,12 @@
 //! injekt-koin bridge (`com.github.null2264:injekt-koin`), whose
 //! `KoinRegistrar` resolves every injection through the Koin global context.
 //! We mirror that: register a Koin module, then swap the global Injekt scope.
+
+// `ProtoBuf` companion 在 kotlinx-serialization 里仍是实验性 API，这里必须注册它：
+// MangaPlus / Manga Million / Peppercarrot 用 `Injekt.get<ProtoBuf>()` 读站点接口，
+// 不注册会让扩展的 `<clinit>` 抛 NoDefinitionFoundException，类永久 erroneous。
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package sandbox
 
 import android.app.Application

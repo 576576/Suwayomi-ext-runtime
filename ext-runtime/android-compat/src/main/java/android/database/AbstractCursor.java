@@ -381,15 +381,18 @@ public abstract class AbstractCursor implements CrossProcessCursor {
             throw new CursorIndexOutOfBoundsException(mPos, getCount());
         }
     }
-    @Override
-    protected void finalize() {
-        if (mSelfObserver != null && mSelfObserverRegistered == true) {
-            mContentResolver.unregisterContentObserver(mSelfObserver);
-        }
-        try {
-            if (!mClosed) close();
-        } catch(Exception e) { }
-    }
+    // AOSP 这里的 finalize() 有两个作用：反注册 ContentObserver、兜底 close()。
+    // 本仓的桩实现里它**什么都不释放**，所以直接删掉而不是换成 Cleaner：
+    //
+    // 1. `mSelfObserver` / `mContentResolver` 恒为 null —— 唯一会给它们赋值的
+    //    `setNotificationUri()` 在本仓直接 `throw NotImplementedError`，所以第一个分支
+    //    永远进不去，也没有任何注册在 ContentResolver 上的资源会泄漏。
+    // 2. 剩下的 `close()` 只改内部状态（置 mClosed、清两个 observable、通知观察者），
+    //    这些对象生命周期与游标本身一致，游标不可达时一并消失，不需要兜底。
+    //
+    // 而且 Cleaner 在这里也用不上：它的动作对象不能持有宿主实例（否则对象永远可达、
+    // 清理永不触发），而 close() 是实例方法、无法在不持有 this 的前提下调用。
+    // 将来若真正实现 setNotificationUri()，需要把 observer 注册状态抽成独立对象再挂 Cleaner。
     /**
      * Cursors use this class to track changes others make to their URI.
      */

@@ -20,6 +20,7 @@ import android.database.AbstractWindowedCursor;
 import android.database.CursorWindow;
 import android.util.Log;
 
+import java.lang.ref.Cleaner;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -35,6 +36,14 @@ import java.util.Map;
 public class SQLiteCursor extends AbstractWindowedCursor {
     static final String TAG = "SQLiteCursor";
     static final int NO_COUNT = -1;
+
+    // 兜底清理：Object.finalize() 自 JDK 18 起标记待删除（JEP 421），改用 Cleaner。
+    // 游标没被 close() 就丢了引用时，SQLiteQuery 持有的 JDBC PreparedStatement 会泄漏。
+    // 动作只持有 mQuery（不反向持有游标），所以不会影响游标本身被回收。
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    /** 由构造函数注册；{@link #close()} 时撤销。 */
+    private Cleaner.Cleanable mCleanable;
 
     /** The name of the table to edit */
     private final String mEditTable;
@@ -99,6 +108,8 @@ public class SQLiteCursor extends AbstractWindowedCursor {
         mEditTable = editTable;
         mColumnNameMap = null;
         mQuery = query;
+        // 语句一旦绑定，JDBC 资源就算握在手里了 —— 从这一刻起挂上兜底
+        mCleanable = CLEANER.register(this, new DisposeAction(mQuery));
 
         try {
             query.B_setBindArgs();
@@ -199,6 +210,12 @@ public class SQLiteCursor extends AbstractWindowedCursor {
             mQuery.close();
             mDriver.cursorClosed();
         }
+        // 撤销 Cleaner 注册：语句已释放，不再需要兜底（close() 可重入，置空后第二次跳过）
+        Cleaner.Cleanable cleanable = mCleanable;
+        if (cleanable != null) {
+            mCleanable = null;
+            cleanable.clean();
+        }
     }
 
     @Override
@@ -244,28 +261,26 @@ public class SQLiteCursor extends AbstractWindowedCursor {
     }
 
     /**
-     * Release the native resources, if they haven't been released yet.
+     * Cleaner 动作：游标没被 close() 就丢了引用时的兜底 —— 释放 JDBC PreparedStatement。
+     *
+     * 只持有 mQuery，**不持有** SQLiteCursor：否则游标永远可达，兜底永不触发。
+     * 原来 finalize() 里的 `mWindow.clear()` 没有对应动作 —— CursorWindow 在本仓是纯 Java
+     * 桩（没有 native 内存），生命周期与游标一致，不需要兜底。
      */
-    @Override
-    protected void finalize() {
-        try {
-            // if the cursor hasn't been closed yet, close it first
-            if (mWindow != null) {
-                //TODO Finish
-//                if (mStackTrace != null) {
-//                    String sql = mQuery.getSql();
-//                    int len = sql.length();
-//                    StrictMode.onSqliteObjectLeaked(
-//                        "Finalizing a Cursor that has not been deactivated or closed. " +
-//                        "database = " + mQuery.getDatabase().getLabel() +
-//                        ", table = " + mEditTable +
-//                        ", query = " + sql.substring(0, (len > 1000) ? 1000 : len),
-//                        mStackTrace);
-//                }
-                close();
+    private static final class DisposeAction implements Runnable {
+        private final SQLiteQuery query;
+
+        DisposeAction(SQLiteQuery query) {
+            this.query = query;
+        }
+
+        @Override
+        public void run() {
+            try {
+                query.close();
+            } catch (Throwable ignored) {
+                // Cleaner 动作抛异常会被直接吞掉，这里显式接住，避免影响同批其它清理
             }
-        } finally {
-            super.finalize();
         }
     }
 }

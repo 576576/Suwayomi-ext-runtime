@@ -32,6 +32,7 @@ import dalvik.system.CloseGuard;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.lang.ref.Cleaner;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.util.*;
@@ -104,6 +105,14 @@ public final class SQLiteDatabase extends SQLiteClosable {
     // True if the database has attached databases.
     // INVARIANT: Guarded by mLock.
     private boolean mHasAttachedDbsLocked;
+
+    // 兜底清理：Object.finalize() 自 JDK 18 起标记待删除（JEP 421），改用 Cleaner。
+    // Cleaner 的动作对象**绝不能**持有 SQLiteDatabase 实例 —— 那会让对象永远可达、
+    // 清理永不触发。所以动作只捕获兜底真正需要的两样东西：CloseGuard 和 JDBC 连接。
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    /** 由 openInner() 在 JDBC 连接就绪后注册；正常关闭（dispose）时撤销。 */
+    private Cleaner.Cleanable mCleanable;
 
     /**
      * When a constraint violation occurs, an immediate ROLLBACK occurs,
@@ -239,19 +248,15 @@ public final class SQLiteDatabase extends SQLiteClosable {
     }
 
     @Override
-    protected void finalize() throws Throwable {
-        try {
-            dispose(true);
-        } finally {
-            super.finalize();
-        }
-    }
-
-    @Override
     protected void onAllReferencesReleased() {
         dispose(false);
     }
 
+    /**
+     * @param finalized 现在恒为 false：终结器路径已由 Cleaner 动作承担
+     *                  （见 {@link #openInner()} 注册的 {@link DisposeAction}）。
+     *                  保留这个参数是为了和 AOSP 源码对齐，便于同步上游。
+     */
     private void dispose(boolean finalized) {
         synchronized (mLock) {
             if (mCloseGuardLocked != null) {
@@ -270,9 +275,53 @@ public final class SQLiteDatabase extends SQLiteClosable {
 
         //Actually close DB connection
         try {
-            if(!connection.isClosed())
+            if (connection != null && !connection.isClosed())
                 connection.close();
         } catch (java.sql.SQLException ignored) {}
+
+        // 撤销 Cleaner 注册：资源已经正常释放，不再需要兜底。
+        // clean() 会同步跑一次动作，而此时 CloseGuard 与连接都已关掉，动作是空转。
+        Cleaner.Cleanable cleanable = mCleanable;
+        if (cleanable != null) {
+            mCleanable = null;
+            cleanable.clean();
+        }
+    }
+
+    /**
+     * Cleaner 动作：扩展没显式 close() 就丢了数据库引用时的兜底。
+     *
+     * 只持有 CloseGuard 和 JDBC 连接，**不持有** SQLiteDatabase —— 否则对象永远可达，
+     * Cleaner 永远不会触发，兜底也就失效了。两个动作都是幂等的（连接已关则跳过），
+     * 所以正常关闭路径跑过 dispose() 之后再触发一次也无害。
+     */
+    private static final class DisposeAction implements Runnable {
+        private final Object lock;
+        private final CloseGuard closeGuard;
+        private final Connection connection;
+
+        DisposeAction(Object lock, CloseGuard closeGuard, Connection connection) {
+            this.lock = lock;
+            this.closeGuard = closeGuard;
+            this.connection = connection;
+        }
+
+        @Override
+        public void run() {
+            synchronized (lock) {
+                if (closeGuard != null) {
+                    // 走到这里说明没被正常关闭：warnIfOpen 报的就是这个
+                    closeGuard.warnIfOpen();
+                    closeGuard.close();
+                }
+            }
+            try {
+                if (connection != null && !connection.isClosed()) {
+                    connection.close();
+                }
+            } catch (java.sql.SQLException ignored) {
+            }
+        }
     }
 
     /**
@@ -732,6 +781,13 @@ public final class SQLiteDatabase extends SQLiteClosable {
         synchronized (sActiveDatabases) {
             sActiveDatabases.put(this, null);
         }
+
+        // JDBC 连接就绪后才注册兜底 —— DisposeAction 要用的就是它（构造时还没有）。
+        // open() 在遇到损坏库时会重试一次 openInner()，所以先撤掉上一次的注册。
+        if (mCleanable != null) {
+            mCleanable.clean();
+        }
+        mCleanable = CLEANER.register(this, new DisposeAction(mLock, mCloseGuardLocked, connection));
     }
 
     /**

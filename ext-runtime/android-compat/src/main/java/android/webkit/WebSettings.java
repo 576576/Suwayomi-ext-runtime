@@ -253,6 +253,7 @@ public abstract class WebSettings {
      * @see #setForceDark
      * @deprecated refer to {@link #setForceDark}
      */
+    @Deprecated
     public static final int FORCE_DARK_OFF = 0;
 
     /**
@@ -265,6 +266,7 @@ public abstract class WebSettings {
      * @see #setForceDark
      * @deprecated refer to {@link #setForceDark}
      */
+    @Deprecated
     public static final int FORCE_DARK_AUTO = 1;
 
     /**
@@ -274,6 +276,7 @@ public abstract class WebSettings {
      * @see #setForceDark
      * @deprecated refer to {@link #setForceDark}
      */
+    @Deprecated
     public static final int FORCE_DARK_ON = 2;
 
     /**
@@ -1587,6 +1590,7 @@ public abstract class WebSettings {
      * authors if the app's theme is dark. To customize the behavior, refer to
      * {@link #setAlgorithmicDarkeningAllowed}.
      */
+    @Deprecated
     public void setForceDark(@ForceDark int forceDark) {
         // Stub implementation to satisfy Roboelectrc shadows that don't override this yet.
     }
@@ -1599,6 +1603,7 @@ public abstract class WebSettings {
      * @see #setForceDark
      * @deprecated refer to {@link #setForceDark}.
      */
+    @Deprecated
     public @ForceDark int getForceDark() {
         // Stub implementation to satisfy Roboelectrc shadows that don't override this yet.
         return FORCE_DARK_AUTO;

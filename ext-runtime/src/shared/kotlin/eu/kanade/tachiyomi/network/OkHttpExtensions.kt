@@ -1,3 +1,7 @@
+// `decodeFromBufferedSource`（下面 `decodeFromJsonResponse`）在 kotlinx-serialization 里
+// 仍是实验性 API。共享源码树：Android extension-host 也会编译本文件，opt-in 一并生效。
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package eu.kanade.tachiyomi.network
 
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -137,7 +141,7 @@ fun OkHttpClient.newCachelessCallWithProgress(
                 val originalResponse = chain.proceed(chain.request())
                 originalResponse
                     .newBuilder()
-                    .body(ProgressResponseBody(originalResponse.body!!, listener))
+                    .body(ProgressResponseBody(originalResponse.body, listener))
                     .build()
             }.build()
 
@@ -152,6 +156,6 @@ fun <T> decodeFromJsonResponse(
     deserializer: DeserializationStrategy<T>,
     response: Response,
 ): T =
-    response.body!!.source().use {
+    response.body.source().use {
         json.decodeFromBufferedSource(deserializer, it)
     }

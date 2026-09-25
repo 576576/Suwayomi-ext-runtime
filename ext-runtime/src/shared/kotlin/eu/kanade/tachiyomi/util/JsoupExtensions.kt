@@ -21,4 +21,5 @@ fun Element.attrOrText(css: String): String = if (css != "text") attr(css) else 
  * Returns a Jsoup document for this response.
  * @param html the body of the response. Use only if the body was read before calling this method.
  */
-fun Response.asJsoup(html: String? = null): Document = Jsoup.parse(html ?: body!!.string(), request.url.toString())
+// okhttp 4.0 起 `Response.body` 是非空 `ResponseBody`（3.x 才可空），`!!` 是多余的。
+fun Response.asJsoup(html: String? = null): Document = Jsoup.parse(html ?: body.string(), request.url.toString())

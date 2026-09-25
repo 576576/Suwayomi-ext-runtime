@@ -277,6 +277,7 @@ public class FakePackageManager extends PackageManager {
         return 0;
     }
 
+    @Deprecated
     @Override
     public int getInstantAppCookieMaxSize() {
         return 0;

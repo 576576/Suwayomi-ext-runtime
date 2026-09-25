@@ -17,7 +17,9 @@ class SourceDriver(private val src: LoadedSource) {
     /** Reads a MangasPage into a plain JSON map list. */
     fun mangasPageToList(page: Any?): Pair<List<Map<String, Any?>>, Boolean> {
         if (page == null) return emptyList<Map<String, Any?>>() to false
-        val mangas: List<Any> = readField(page, "mangas") as? List<Any> ?: emptyList()
+        // 用 `List<*>` 而不是 `List<Any>`：反射取回的容器泛型实参在运行时无法校验，
+        // `as? List<Any>` 必然是 unchecked cast；star projection 不需要检查实参，无警告。
+        val mangas: List<*> = readField(page, "mangas") as? List<*> ?: emptyList<Any?>()
         val hasNext: Boolean = readField(page, "hasNextPage") as? Boolean ?: false
         val items = mangas.map { mangaToMap(it) }
         return items to hasNext
@@ -183,21 +185,21 @@ class SourceDriver(private val src: LoadedSource) {
         // new lib: getMangaUpdate(..., fetchChapters=true) returns SMangaUpdate(chapters)
         val viaUpdate = try {
             val update = callSuspendMethod(src.instance, "getMangaUpdate", smanga, emptyList<Any>(), false, true)
-            (readField(update, "chapters") as? List<Any>)?.map { chapterToMap(it) }
+            (readField(update, "chapters") as? List<*>)?.map { chapterToMap(it) }
         } catch (e: Throwable) {
             null
         }
         if (viaUpdate != null) return viaUpdate
         // legacy fallback
         val obs = callFetchOrSuspend("fetchChapterList", "getChapterList", smanga)
-        val chapters: List<Any> = (if (obs is rx.Observable<*>) awaitObservable(obs) else obs) as? List<Any> ?: emptyList()
+        val chapters: List<*> = (if (obs is rx.Observable<*>) awaitObservable(obs) else obs) as? List<*> ?: emptyList<Any?>()
         return chapters.map { chapterToMap(it) }
     }
 
     fun getPageList(chapterFields: Map<String, Any?>): List<Map<String, Any?>> {
         val schapter = buildModel(src.schapterCls, chapterFields)
         val obs = callFetchOrSuspend("fetchPageList", "getPageList", schapter)
-        val pages: List<Any> = (if (obs is rx.Observable<*>) awaitObservable(obs) else obs) as? List<Any> ?: emptyList()
+        val pages: List<*> = (if (obs is rx.Observable<*>) awaitObservable(obs) else obs) as? List<*> ?: emptyList<Any?>()
         return pages.map { pageToMap(it) }
     }
 
@@ -280,8 +282,8 @@ class SourceDriver(private val src: LoadedSource) {
         val list = (if (returned is rx.Observable<*>) awaitObservable(returned) else returned)
             ?: return emptyList()
         // FilterList 是 `{ list: List<Filter> }`；宽容一点，直接是 List 也接受。
-        val filters = readField(list, "list") as? List<Any>
-            ?: list as? List<Any>
+        val filters = readField(list, "list") as? List<*>
+            ?: list as? List<*>
             ?: emptyList()
         return filters.map { filterToMap(it) }
     }
@@ -310,7 +312,7 @@ internal fun filterToMap(f: Any?): Map<String, Any?> {
         "title", "separator" -> {}
         "select" -> {
             out["state"] = (readField(f, "state") as? Number)?.toInt() ?: 0
-            out["values"] = readField(f, "displayValues") as? List<Any> ?: emptyList<Any>()
+            out["values"] = readField(f, "displayValues") as? List<*> ?: emptyList<Any>()
         }
         "text" -> out["state"] = readField(f, "state") ?: ""
         "check-box" -> out["state"] = readField(f, "state") ?: false

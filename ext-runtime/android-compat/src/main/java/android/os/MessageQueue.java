@@ -27,6 +27,7 @@ import android.util.SparseArray;
 import java.io.FileDescriptor;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.lang.ref.Cleaner;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -46,8 +47,16 @@ public final class MessageQueue {
     // True if the message queue can be quit.
     private final boolean mQuitAllowed;
 
+    // 兜底清理：Object.finalize() 自 JDK 18 起标记待删除（JEP 421），改用 Cleaner。
+    // Cleaner 的动作对象**绝不能**持有 MessageQueue 实例（否则对象永远可达、清理永不触发），
+    // 所以 native 句柄放进独立的 AtomicLong：队列和清理动作共享它，动作只读到最新值。
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    /** 由构造函数注册；{@link #dispose()} 时撤销并置空。 */
+    private Cleaner.Cleanable mCleanable;
+
     @SuppressWarnings("unused")
-    private long mPtr; // used by native code
+    private final AtomicLong mPtr = new AtomicLong(); // used by native code
 
     Message mMessages;
     private Message mLast;
@@ -69,24 +78,43 @@ public final class MessageQueue {
 
     MessageQueue(boolean quitAllowed) {
         mQuitAllowed = quitAllowed;
-        mPtr = ShadowPausedMessageQueue.nativeInit();
-    }
-
-    @Override
-    protected void finalize() throws Throwable {
-        try {
-            dispose();
-        } finally {
-            super.finalize();
-        }
+        mPtr.set(ShadowPausedMessageQueue.nativeInit());
+        // 动作只持有 mPtr，不持有 this —— 否则 MessageQueue 永远可达，兜底永不触发
+        mCleanable = CLEANER.register(this, new DisposeAction(mPtr));
     }
 
     // Disposes of the underlying message queue.
-    // Must only be called on the looper thread or the finalizer.
+    // Must only be called on the looper thread or the cleaner.
     private void dispose() {
-        if (mPtr != 0) {
-            ShadowPausedMessageQueue.nativeDestroy(mPtr);
-            mPtr = 0;
+        // getAndSet 保证句柄只销毁一次：Looper 线程走 dispose() 的同时，Cleaner 线程
+        // 可能正在跑同一个动作。
+        long ptr = mPtr.getAndSet(0);
+        if (ptr != 0) {
+            ShadowPausedMessageQueue.nativeDestroy(ptr);
+        }
+        // 撤销 Cleaner 注册：句柄已释放，不再需要兜底。
+        // clean() 会同步跑一次动作，此时 mPtr 已为 0，动作是空转。
+        Cleaner.Cleanable cleanable = mCleanable;
+        if (cleanable != null) {
+            mCleanable = null;
+            cleanable.clean();
+        }
+    }
+
+    /** Cleaner 动作：队列没被 quit() 就丢了引用时，兜底释放 native 句柄。 */
+    private static final class DisposeAction implements Runnable {
+        private final AtomicLong ptr;
+
+        DisposeAction(AtomicLong ptr) {
+            this.ptr = ptr;
+        }
+
+        @Override
+        public void run() {
+            long p = ptr.getAndSet(0);
+            if (p != 0) {
+                ShadowPausedMessageQueue.nativeDestroy(p);
+            }
         }
     }
 
@@ -163,7 +191,7 @@ public final class MessageQueue {
     private boolean isPollingLocked() {
         // If the loop is quitting then it must not be idling.
         // We can assume mPtr != 0 when mQuitting is false.
-        return !mQuitting && ShadowPausedMessageQueue.nativeIsPolling(mPtr);
+        return !mQuitting && ShadowPausedMessageQueue.nativeIsPolling(mPtr.get());
     }
 
     /**
@@ -270,7 +298,7 @@ public final class MessageQueue {
         // Return here if the message loop has already quit and been disposed.
         // This can happen if the application tries to restart a looper after quit
         // which is not supported.
-        final long ptr = mPtr;
+        final long ptr = mPtr.get();
         if (ptr == 0) {
             return null;
         }
@@ -424,7 +452,7 @@ public final class MessageQueue {
             // ensure that the queue's behavior is deterministic in both individual tests and in a
             // test suite.
             resetSyncBarrierTokens();
-            ShadowPausedMessageQueue.nativeWake(mPtr);
+            ShadowPausedMessageQueue.nativeWake(mPtr.get());
         }
     }
 
@@ -460,7 +488,7 @@ public final class MessageQueue {
             }
 
             // We can assume mPtr != 0 because mQuitting was previously false.
-            ShadowPausedMessageQueue.nativeWake(mPtr);
+            ShadowPausedMessageQueue.nativeWake(mPtr.get());
         }
     }
 
@@ -579,7 +607,7 @@ public final class MessageQueue {
             // If the loop is quitting then it is already awake.
             // We can assume mPtr != 0 when mQuitting is false.
             if (needWake && !mQuitting) {
-                ShadowPausedMessageQueue.nativeWake(mPtr);
+                ShadowPausedMessageQueue.nativeWake(mPtr.get());
             }
         }
     }
@@ -653,7 +681,7 @@ public final class MessageQueue {
 
             // We can assume mPtr != 0 because mQuitting is false.
             if (needWake) {
-                ShadowPausedMessageQueue.nativeWake(mPtr);
+                ShadowPausedMessageQueue.nativeWake(mPtr.get());
             }
         }
         return true;
