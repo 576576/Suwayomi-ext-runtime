@@ -42,3 +42,9 @@
   `io/sharedprefs/JsonSharedPreferences.java`（无引用，真正被 `CustomContext` 用的是 Kotlin 版
   `JavaSharedPreferences.kt`）、`com/squareup/duktape/DuktapeStub.java`。共 −1,495 行；
   唯一用到 `com.ibm.icu` 的就是这批死代码，依赖一并移除。
+- `compat-reference.conf` 去掉一层目录嵌套（2026-09-30）：`android.files.rootDir` 由
+  `${androidcompat.rootDir}/appdata` 改为 `${androidcompat.rootDir}`，
+  `android.files.packageDir` 由 `${androidcompat.rootDir}/android-compat/packages`
+  改为 `${androidcompat.rootDir}/packages`。目录已经由 `androidcompat.rootDir`
+  归口到 `<appdata>/android-compat`，再套一层只是让路径变成
+  `…/android-compat/appdata/…`，排查时白多看一级。

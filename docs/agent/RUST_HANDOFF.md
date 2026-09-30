@@ -134,6 +134,8 @@
 - 本机没有扩展台架（`E:\Github\Suwayomi-builds\ext-lab` 不存在），
   **这一轮没跑批量加载率**。config 改动影响的是目录落点，风险点是某些扩展
   假定 `filesDir` 可写——合入前补一轮 `ext_survey.py`（192 包）比较稳妥。
-- `androidcompat.rootDir` 现在是 `<root>/android-compat`，`android.files.rootDir` 又是
-  `${androidcompat.rootDir}/appdata`，出现 `android-compat/appdata` 双层嵌套。
-  想收拾可以把 `compat-reference.conf` 里那层去掉，但会让已部署实例换目录 → 需要迁移，暂不动。
+- ~~双层嵌套~~：已去掉（`android.files.rootDir` 由 `${androidcompat.rootDir}/appdata`
+  改为 `${androidcompat.rootDir}`，`packageDir` 也少套一层）。现在整棵树是
+  `<appdata>/android-compat/{data,files,cache,code_cache,no_backup,databases,shared_prefs,packages}`
+  \+ `<appdata>/android-compat/extappdata/**`。注意已部署实例的 Android 目录会换位置，
+  旧的那棵 `<appdata>/android-compat/appdata/` 需要手工清掉。
