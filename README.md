@@ -71,3 +71,6 @@ Mihon/Tachiyomi 扩展 API 形状（Apache-2.0, Copyright 2015 Javier Tomás）�
 - [`docs/agent/EXTRACTION_RECORD.md`](docs/agent/EXTRACTION_RECORD.md) — 决策与试错记录（含目录布局、JRE 归属等细节）
 - [`docs/agent/SANDBOX_DETAILS.md`](docs/agent/SANDBOX_DETAILS.md) — 沙盒加载 / 转换 / 驱动的实测细节与踩坑清单
 - [`docs/agent/API36_UPGRADE.md`](docs/agent/API36_UPGRADE.md) — Android 公开 API 基线 30 → 36 的实测与施工要点
+- [`docs/agent/JAVA_KOTLIN_SURVEY.md`](docs/agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin 迁移与 Rust 侧抽离的盘点结论
+- [`docs/agent/REF_IMPL_DIFF.md`](docs/agent/REF_IMPL_DIFF.md) — 与参考实现（Suwayomi-Server / Mihon）的差异对照，`org/json` / `quickjs` 的 Kotlin 实现调研
+- [`docs/agent/RUST_HANDOFF.md`](docs/agent/RUST_HANDOFF.md) — config 抽离给 Rust（已做）+ SQLite / 偏好落盘的归属评估

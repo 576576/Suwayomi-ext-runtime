@@ -1,16 +1,20 @@
 # android-compat（vendored 源码）
 
-上游：[Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) 的 `AndroidCompat/` 与
-`AndroidCompat/Config/`（Mozilla Public License 2.0，Copyright Contributors to the Suwayomi
-project，全文见同目录 `LICENSE`）。
+参考实现（本仓**不与之同步**，只作对照与溯源）：
 
-相对上游的改动：
+- **Suwayomi-Server** 的 `AndroidCompat/` 与 `AndroidCompat/Config/`
+  （Mozilla Public License 2.0，Copyright Contributors to the Suwayomi project，
+  全文见同目录 `LICENSE`）—— 桌面 JVM 上 `android.*` / `androidx.*` 桩与实现的出处。
+- **Mihon** 的扩展 API（`eu.kanade.tachiyomi.**`）—— 扩展面契约形状的出处。
+
+相对参考实现 Suwayomi-Server 的改动（需要对照时按这份列表比对）：
 
 - 去掉 `xyz/nulldev/androidcompat/webkit/` 下的 CEF WebView 实现（`CefHelper`、`KcefHelper`、
   `KcefWebSettings`、`KcefWebViewProvider`）与引用它的 `AndroidCompatInitializer`：
   桌面沙盒不注册 WebView provider，也不带 CEF 运行时。
 - 去掉 `resources/font/`（37MB，只被 `android.graphics.Typeface` 读取）。
-- `app/cash/quickjs/QuickJs` 由 graalvm polyglot 改为 Rhino 实现。
+- `app/cash/quickjs/QuickJs` 由 graalvm polyglot 改为 Rhino 实现（参考实现用 graalvm
+  polyglot，为它要多背 67MB）。
 - 补齐缺失的 `@Deprecated` 注解（AOSP 源码里只写了 Javadoc `@deprecated` 标签、没加注解，
   javac 报 `[dep-ann]`）：`PackageManager.getInstantAppCookieMaxSize()`（含
   `FakePackageManager` 的覆盖）、`Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET`、
@@ -33,5 +37,8 @@ project，全文见同目录 `LICENSE`）。
     独立对象再挂 Cleaner。
   - 连带：`SQLiteCursor.finalize()` 覆盖的是 `AbstractCursor.finalize()`，基类那个删掉后
     它会变成直接覆盖 `Object.finalize()`、重新触发 removal 警告，所以一并迁。
-
-同步上游时按这份列表重新裁剪。
+- 删掉参考实现里本仓用不到的死代码（2026-09-30）：`xyz/nulldev/androidcompat/replace/java/**`
+  （4 个文件，包名是 `…replace.java.util` / `…replace.java.text`，替换不了 JDK 的类）、
+  `io/sharedprefs/JsonSharedPreferences.java`（无引用，真正被 `CustomContext` 用的是 Kotlin 版
+  `JavaSharedPreferences.kt`）、`com/squareup/duktape/DuktapeStub.java`。共 −1,495 行；
+  唯一用到 `com.ibm.icu` 的就是这批死代码，依赖一并移除。

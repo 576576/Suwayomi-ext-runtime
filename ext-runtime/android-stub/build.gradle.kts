@@ -50,7 +50,8 @@ fun sha256(file: File): String {
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
-// 与上游 getAndroid.sh 一致：这几个前缀是核心库而不是 android.* 桩，留在 classpath 上会遮蔽 JDK。
+// 与参考实现（Suwayomi-Server 的 `getAndroid.sh`）一致：这几个前缀是核心库而不是 android.*
+// 桩，留在 classpath 上会遮蔽 JDK。
 val coreLibPrefixes = listOf(
     "java", "javax", "org/apache", "org/json", "org/w3c", "org/xml", "org/xmlpull", "junit",
 )

@@ -86,3 +86,9 @@ public AOSP API (Apache-2.0).
   sandbox loading / translation / driving (Chinese)
 - [`docs/agent/API36_UPGRADE.md`](../agent/API36_UPGRADE.md) — Android public API baseline 30 → 36:
   measured results and upgrade notes (Chinese)
+- [`docs/agent/JAVA_KOTLIN_SURVEY.md`](../agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin migration and
+  Rust-side extraction survey (Chinese)
+- [`docs/agent/REF_IMPL_DIFF.md`](../agent/REF_IMPL_DIFF.md) — diff against the reference implementations
+  (Suwayomi-Server / Mihon) and whether Kotlin replacements exist for `org/json` / `quickjs` (Chinese)
+- [`docs/agent/RUST_HANDOFF.md`](../agent/RUST_HANDOFF.md) — config handed off to Rust (done) + ownership
+  evaluation for SQLite and preference persistence (Chinese)

@@ -26,7 +26,7 @@ dependencies {
     implementation("io.reactivex:rxjava:1.3.8")
     implementation("net.dongliu:apk-parser:2.6.10")
     implementation("de.femtopedia.dex2jar:dex-tools:2.4.38")
-    // app.cash.quickjs.QuickJs 的实现换成 Rhino（上游用 graalvm polyglot，为它要多背 67MB）。
+    // app.cash.quickjs.QuickJs 的实现换成 Rhino（参考实现用 graalvm polyglot，为它要多背 67MB）。
     implementation("org.mozilla:rhino:1.8.0")
 
     // 编译期用得到、运行期走不到的地方：注解（保留策略让它们不进 fat jar）。
