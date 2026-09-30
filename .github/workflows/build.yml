@@ -15,7 +15,7 @@ on:
   workflow_call:
     inputs:
       version_name:
-        description: 版本名（三段 semver，如 30.0.47；进 Maven 坐标与资产名）
+        description: 版本名（三段 semver，如 36.0.47；进 Maven 坐标与资产名）
         required: true
         type: string
       version_code:
@@ -64,9 +64,9 @@ jobs:
           test -f "$LIB/ext-runtime.jar"
           test -f "$LIB/ext-runtime-shared-sources.jar"
 
-          echo "--- android-stub 基线（应为 30.r03.1）---"
+          echo "--- android-stub 基线（应为 36.r02.1）---"
           unzip -p "$LIB/ext-runtime.jar" META-INF/android-stub.properties | tee /tmp/stub.properties
-          grep -q '^version=30\.r03\.1$' /tmp/stub.properties \
+          grep -q '^version=36\.r02\.1$' /tmp/stub.properties \
             || { echo "::error::AOSP 基线与预期不一致"; exit 1; }
 
           echo "--- 共享源码树制品内容 ---"

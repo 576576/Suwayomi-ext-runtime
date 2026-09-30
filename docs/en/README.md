@@ -26,7 +26,7 @@ bash scripts/make-jre.sh windows x64 /tmp/jre   # <windows|linux|mac> <x64|aarch
 
 ## Versioning
 
-`<AOSP API level>.{commit count / 100}.{commit count % 100}`, e.g. `30.0.47`;
+`<AOSP API level>.{commit count / 100}.{commit count % 100}`, e.g. `36.0.47`;
 `versionCode = commit count of this repo + 1000`.
 
 The major version still follows the API baseline of `android-stub` — `release.yml` takes
@@ -40,9 +40,9 @@ Pushes to `main` or manual dispatch publish to **GitHub Release assets** (no aut
 
 | Channel | tag | Trigger |
 | --- | --- | --- |
-| release | `v30.0.47` | manual dispatch |
-| beta | `v30.0.47-beta.<run_id>` | manual dispatch |
-| alpha | `30.0.47-alpha.<run_id>` | automatic on push to `main` (jar and two JREs only, no Packages) / manual dispatch |
+| release | `v36.0.47` | manual dispatch |
+| beta | `v36.0.47-beta.<run_id>` | manual dispatch |
+| alpha | `36.0.47-alpha.<run_id>` | automatic on push to `main` (jar and two JREs only, no Packages) / manual dispatch |
 
 | Artifact | Purpose |
 | --- | --- |
@@ -86,5 +86,3 @@ public AOSP API (Apache-2.0).
   sandbox loading / translation / driving (Chinese)
 - [`docs/agent/API36_UPGRADE.md`](../agent/API36_UPGRADE.md) — Android public API baseline 30 → 36:
   measured results and upgrade notes (Chinese)
-- [`docs/agent/JAVA_KOTLIN_SURVEY.md`](../agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin migration and
-  Rust-side extraction survey (Chinese)

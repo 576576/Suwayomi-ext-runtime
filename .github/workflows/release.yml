@@ -10,10 +10,10 @@ name: Release
 #
 # 版本号套主仓规则，只换基线与来源（本仓自己的计数，不跟主仓）：
 #   versionCode = 本仓库提交数 + 1000                      （主仓是 +3000）
-#   版本名      = <aospApiLevel>.{count/100}.{count%100:02d}（如 30.0.47）
+#   版本名      = <aospApiLevel>.{count/100}.{count%100:02d}（如 36.0.47）
 #                 大版本跟着 android-stub 的公开 API 基线（pin 在
 #                 ext-runtime/android-stub/android-stub.properties），与 android-stub
-#                 自己的 30.r03.1 同一套思路：看一眼版本号就知道对应哪个 Android API；
+#                 自己的 36.r02.1 同一套思路：看一眼版本号就知道对应哪个 Android API；
 #                 后两位是本仓提交数（主仓的后两位也是它自己的提交数）。
 #   tag     release → v{版本名} / beta → v{版本名}-beta.{run_id} / alpha → {版本名}-alpha.{run_id}
 #
