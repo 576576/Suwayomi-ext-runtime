@@ -79,3 +79,5 @@ Mihon/Tachiyomi 扩展 API 形状（Apache-2.0, Copyright 2015 Javier Tomás）�
 - [`docs/agent/plans/java-kotlin-survey.md`](docs/agent/plans/java-kotlin-survey.md) — Java → Kotlin 迁移与 Rust 侧抽离的盘点结论
 - [`docs/agent/plans/rust-handoff.md`](docs/agent/plans/rust-handoff.md) — config 抽离给 Rust（已做）+ SQLite / 偏好落盘的归属评估
 - [`docs/agent/plans/stub-slimming.md`](docs/agent/plans/stub-slimming.md) — 让最终 jar 不打包无用库：排除集、收益与验证闸门（P0 已落地，45.91 → 24.83 MiB）
+- [`docs/agent/plans/modelpack-compat.md`](docs/agent/plans/modelpack-compat.md) — TachiyomiX 图像增强插件（modelpack）是什么、桌面沙盒今天拿它们怎么办（实测两道坎）、以及若要支持差距在哪一层
+- [`docs/agent/plans/image-enhancement-rust.md`](docs/agent/plans/image-enhancement-rust.md) — 图像增强能否搬到 Rust 侧：上游的 HTTP 后处理接缝、Rust 侧「契约在行为不在」、推理引擎选型、zip 资源包与模型仓库、许可证约束

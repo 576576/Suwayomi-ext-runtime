@@ -13,6 +13,8 @@
 | `java-kotlin-survey.md` | Java → Kotlin 迁移与 Rust 侧抽离的盘点：只有 4 个文件值得考虑、`android/**` 那 78k 行为什么不能迁、工程约束与建议顺序 |
 | `rust-handoff.md` | 沙盒状态归谁：config 抽离给 Rust（已落地）+ SQLite / 偏好落盘的评估。判断原则是「扩展会不会同步调用它」 |
 | `stub-slimming.md` | 让最终 jar 不打包无用库：现状构成、分级排除集与各自收益、机制与验证闸门、风险与回滚。**P0 已落地**（45.91 → 24.83 MiB），P1/P2 搁置（理由见文末） |
+| `modelpack-compat.md` | TachiyomiX 图像增强插件（modelpack）的兼容分析：10 个包是什么（纯 ncnn 权重 / 自带 CPU `.so`）、桌面沙盒今天拿它们怎么办（实测两道坎：空 `resources.arsc` 撞 apk-parser 越界读、身份门）、执行面的真实差距与分层可行路径 |
+| `image-enhancement-rust.md` | 把图像增强搬到 Rust 侧（`Suwayomi-next`）的可行性：参考实现的「图片处理」到底是什么、上游已留的 HTTP 后处理接缝、Rust 侧「契约在行为不在」、推理引擎选型（`ort` vs ncnn 绑定）、zip 资源包与 keiyoushi 形状的模型仓库、许可证硬约束 |
 
 ## 维护约定
 
