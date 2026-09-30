@@ -9,7 +9,7 @@ name: Build
 # release 共用 3.y.z 版本名）。主仓 scripts/resolve-ext-runtime.sh 按这个形状反解版本
 # 号，改资产名会连带失效。
 #
-# 坐标、制品构成、认证与消费方式见 docs/EXTRACTION_RECORD.md
+# 坐标、制品构成、认证与消费方式见 docs/agent/EXTRACTION_RECORD.md
 
 on:
   workflow_call:

@@ -63,5 +63,10 @@ Mihon/Tachiyomi 扩展 API 形状（Apache-2.0, Copyright 2015 Javier Tomás）�
 
 ## 文档
 
-- [`docs/EXTRACTION_PLAN.md`](docs/EXTRACTION_PLAN.md) — 剥离施工计划
-- [`docs/EXTRACTION_RECORD.md`](docs/EXTRACTION_RECORD.md) — 决策与试错记录（含目录布局、JRE 归属等细节）
+英文版：[`docs/en/README.md`](docs/en/README.md)。
+
+`docs/agent/` 是面向维护者（含 AI agent）的施工文档，不参与对外说明：
+
+- [`docs/agent/EXTRACTION_PLAN.md`](docs/agent/EXTRACTION_PLAN.md) — 剥离施工计划
+- [`docs/agent/EXTRACTION_RECORD.md`](docs/agent/EXTRACTION_RECORD.md) — 决策与试错记录（含目录布局、JRE 归属等细节）
+- [`docs/agent/SANDBOX_DETAILS.md`](docs/agent/SANDBOX_DETAILS.md) — 沙盒加载 / 转换 / 驱动的实测细节与踩坑清单
