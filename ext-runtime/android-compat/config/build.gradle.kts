@@ -17,7 +17,6 @@ dependencies {
     compileOnly("org.slf4j:slf4j-api:2.0.13")
     // Logging.kt 配的是 logback；应用模块用 slf4j-nop，这个入口运行期不会被走到。
     compileOnly("ch.qos.logback:logback-classic:1.6.3")
-    compileOnly("ca.gosyer:kotlin-multiplatform-appdirs:2.0.0")
 }
 
 java {

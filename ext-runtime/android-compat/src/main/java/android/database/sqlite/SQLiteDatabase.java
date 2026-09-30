@@ -255,7 +255,7 @@ public final class SQLiteDatabase extends SQLiteClosable {
     /**
      * @param finalized 现在恒为 false：终结器路径已由 Cleaner 动作承担
      *                  （见 {@link #openInner()} 注册的 {@link DisposeAction}）。
-     *                  保留这个参数是为了和 AOSP 源码对齐，便于同步上游。
+     *                  保留这个参数是为了和 AOSP 源码对齐，便于与参考实现对照。
      */
     private void dispose(boolean finalized) {
         synchronized (mLock) {

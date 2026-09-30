@@ -2,12 +2,19 @@ package xyz.nulldev.androidcompat.config
 
 import com.typesafe.config.Config
 import io.github.config4k.getValue
-import xyz.nulldev.ts.config.ConfigModule
+import xyz.nulldev.ts.config.SystemPropertyOverridableConfigModule
 
+/**
+ * `android.os.Build` / `android.os.SystemProperties` 的静态初始化会直接摸这个模块，
+ * 所以它在沙盒启动时就必须注册好（见 `sandbox.AndroidEnv.registerAndroidCompatConfig`）。
+ *
+ * `isDebuggable` 可被 `-Dsuwayomi.tachidesk.config.android.system.isDebuggable=<bool>` 覆盖；
+ * `properties.*` 那套动态键（`SystemProperties.get`）不走覆盖，仍只读 `compat-reference.conf`。
+ */
 class SystemConfigModule(
     val getConfig: () -> Config,
-) : ConfigModule(getConfig) {
-    val isDebuggable: Boolean by getConfig()
+) : SystemPropertyOverridableConfigModule(getConfig, "android.system") {
+    val isDebuggable: Boolean by overridableConfig
 
     val propertyPrefix = "properties."
 

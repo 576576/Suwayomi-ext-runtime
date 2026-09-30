@@ -22,21 +22,21 @@ dependencies {
     implementation("io.insert-koin:koin-core:3.5.6")
     implementation("io.github.oshai:kotlin-logging-jvm:6.0.9")
     implementation("org.slf4j:slf4j-api:2.0.13")
-    implementation("ca.gosyer:kotlin-multiplatform-appdirs:2.0.0")
     implementation("org.jsoup:jsoup:1.18.1")
     implementation("io.reactivex:rxjava:1.3.8")
     implementation("net.dongliu:apk-parser:2.6.10")
     implementation("de.femtopedia.dex2jar:dex-tools:2.4.38")
-    // app.cash.quickjs.QuickJs 的实现换成 Rhino（上游用 graalvm polyglot，为它要多背 67MB）。
+    // app.cash.quickjs.QuickJs 的实现换成 Rhino（参考实现用 graalvm polyglot，为它要多背 67MB）。
     implementation("org.mozilla:rhino:1.8.0")
 
-    // 编译期用得到、运行期走不到的地方：注解，以及 replace/java/**（无任何外部引用）、
-    // JavaSharedPreferences（无任何外部引用）这两处死代码路径。
+    // 编译期用得到、运行期走不到的地方：注解（保留策略让它们不进 fat jar）。
+    // 原先还有 `replace/java/**`（全仓无引用，且是唯一用 com.ibm.icu 的地方）与
+    // `JsonSharedPreferences.java`（无引用）两处死代码，2026-09-30 已删，icu4j 随之移除
+    // —— 见 docs/agent/plans/java-kotlin-survey.md。
     compileOnly("org.jetbrains:annotations:26.0.2")
     compileOnly("androidx.annotation:annotation:1.10.0")
     compileOnly("com.fasterxml.jackson.core:jackson-annotations:2.22")
     compileOnly("com.android.tools.build:apksig:9.4.0")
-    compileOnly("com.ibm.icu:icu4j:78.3")
     // android.jar 剔掉了 org.xmlpull；android/os/PersistableBundle 与 XmlUtils 要它。
     compileOnly("xmlpull:xmlpull:1.1.3.4a")
     compileOnly("com.russhwolf:multiplatform-settings-jvm:1.3.0")

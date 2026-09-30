@@ -3,7 +3,9 @@
 //! 两端共用（只依赖 Android 标准的 `SharedPreferences` 接口，不碰 `androidx.preference`）：
 //! 扩展填进去的账号 / 服务器地址要能跨进程重启读回来，只放内存里则重启即丢。
 //!
-//! 只支持 `String` / `Boolean` / `Set<String>` —— 这正是扩展设置项的全部取值类型。
+//! 覆盖 `SharedPreferences` 的六种取值类型。扩展的设置项自己只用到
+//! `String` / `Boolean` / `Set<String>`，但备份恢复（`settings/raw`）回写的是
+//! 别的设备存的偏好，类型跟着文件走。
 
 package sandbox
 
@@ -58,6 +60,9 @@ class FilePreferences(private val file: Path) : SharedPreferences {
         null -> null
         is Set<*> -> "l" + JsonArray(v.map { JsonPrimitive(it.toString()) })
         is Boolean -> "b$v"
+        is Int -> "i$v"
+        is Long -> "o$v"
+        is Float -> "f$v"
         else -> "s$v"
     }
 
@@ -65,6 +70,10 @@ class FilePreferences(private val file: Path) : SharedPreferences {
         raw == null -> null
         raw.startsWith("l") -> Json.parseToJsonElement(raw.substring(1)).jsonArray.map { it.jsonPrimitive.content }.toMutableSet()
         raw.startsWith("b") -> raw.substring(1).toBoolean()
+        // 数值也带类型存：不带的话读回来全是字符串，`getInt` 一律回落到默认值。
+        raw.startsWith("o") -> raw.substring(1).toLongOrNull()
+        raw.startsWith("i") -> raw.substring(1).toIntOrNull()
+        raw.startsWith("f") -> raw.substring(1).toFloatOrNull()
         raw.startsWith("s") -> raw.substring(1)
         else -> raw
     }

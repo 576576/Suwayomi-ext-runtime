@@ -23,18 +23,20 @@ import java.util.concurrent.Executors
  *   POST /source/{id}/preferences     -> {preferences:[...]}
  *
  * 路由与 JSON 契约在 `extension-runtime` 共享；这里只负责**桌面侧**的两件事：
- * 进程入口（读环境变量、扫 `extensions/` 目录）与 `com.sun.net.httpserver` 宿主。
+ * 进程入口（读环境变量、扫扩展目录）与 `com.sun.net.httpserver` 宿主。
  */
 fun main() {
     val port = System.getenv("SUWAYOMI_SANDBOX_PORT")?.toIntOrNull() ?: 4569
-    val extensionsDir = System.getenv("SUWAYOMI_EXTENSIONS_DIR") ?: "extensions"
-    // Converted jars live in a separate directory (bin/extensions in the
-    // release layout) so the extensions dir only holds the downloaded APKs.
-    val jarDir = System.getenv("SUWAYOMI_JAR_DIR")
-        ?: Paths.get(extensionsDir).parent?.resolve("bin/extensions")?.toString()
-        ?: "bin/extensions"
-    Files.createDirectories(Paths.get(extensionsDir))
-    Files.createDirectories(Paths.get(jarDir))
+    // 目录只有这一个旋钮：扩展 APK、dex2jar 产物、设置三处都由 appdata 根派生。
+    // 子路径必须与 Rust 侧 `AppPaths` 一致（settings/、extensions/apk、extensions/bin），
+    // 两侧对不上就会各写一半 —— 改动要同步。
+    val appdataDir = Paths.get(System.getenv("SUWAYOMI_APPDATA_DIR") ?: "appdata")
+    val extensionsDir = appdataDir.resolve("extensions").resolve("apk")
+    // Converted jars live in a separate directory so the extensions dir only holds
+    // the downloaded APKs.
+    val jarDir = appdataDir.resolve("extensions").resolve("bin")
+    Files.createDirectories(extensionsDir)
+    Files.createDirectories(jarDir)
 
     // 扩展把 AppInfo 的版本拼进 User-Agent，值取自宿主（见 installHostVersion）。
     installHostVersion(
@@ -42,15 +44,13 @@ fun main() {
         System.getenv("SUWAYOMI_VERSION_NAME"),
     )
 
-    val registry = ExtensionRegistry(Paths.get(extensionsDir), Paths.get(jarDir))
+    val registry = ExtensionRegistry(extensionsDir, jarDir)
 
-    // 源设置要跨重启保留：扩展填的服务器地址/账号密码存在 `<instance>/settings/source_<id>.properties`。
+    // 源设置要跨重启保留：扩展填的服务器地址/账号密码存在 `<appdata>/settings/source_<id>.properties`。
     // 不装这个 factory 会退化成进程内存储，重启即丢。
-    val settingsDir = System.getenv("SUWAYOMI_SETTINGS_DIR")
-        ?: Paths.get(extensionsDir).parent?.resolve("settings")?.toString()
-        ?: "settings"
-    Files.createDirectories(Paths.get(settingsDir))
-    PreferenceStores.installFactory { key -> FilePreferences(Paths.get(settingsDir).resolve("$key.properties")) }
+    val settingsDir = appdataDir.resolve("settings")
+    Files.createDirectories(settingsDir)
+    PreferenceStores.installFactory { key -> FilePreferences(settingsDir.resolve("$key.properties")) }
 
     // 扫之前先把宿主环境补齐（见 AndroidEnv.kt）：Koin 没起来、主 Looper 没挂、配置模块没注册，
     // 扩展的 <clinit> 都会以 ExceptionInInitializerError 记在类上，之后该类永久不可用。
@@ -72,5 +72,5 @@ fun main() {
     // 误判 sandbox 挂掉而反复 kill/重启。线程池让慢请求独占线程，health 常驻可响应。
     server.executor = Executors.newCachedThreadPool()
     server.start()
-    println("suwayomi-jvm-sandbox listening on 127.0.0.1:$port (extensions dir: $extensionsDir, jar dir: $jarDir)")
+    println("suwayomi-jvm-sandbox listening on 127.0.0.1:$port (appdata: $appdataDir, extensions: $extensionsDir, jars: $jarDir)")
 }

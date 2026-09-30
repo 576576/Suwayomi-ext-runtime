@@ -69,6 +69,24 @@ interface SourceRegistry {
     fun setSourcePreference(sourceId: Long, position: Int, value: String): String? = null
 
     /**
+     * 源的**扁平** key/value（`GET /source/{id}/preferences/raw`）。
+     *
+     * 与上面那份「设置界面 JSON」的分工：界面 JSON 是给 WebUI 渲染表单用的（含标题、
+     * 选项、可见性），备份要的是「扩展自己存了什么」—— 后者才是 Mihon 备份 105 号段的
+     * 内容。返回 `[{"key":…,"type":…,"value":…}]`，`type` 为 `String` / `Boolean` /
+     * `StringSet` / `Int` / `Long` / `Float`。
+     *
+     * `null` = 该源没有设置界面（未实现 `ConfigurableSource`），或这一端还没接上。
+     */
+    fun sourcePreferenceValues(sourceId: Long): String? = null
+
+    /**
+     * 把一份扁平 key/value 写回扩展自己的存储，返回写回后的结果
+     * （`POST /source/{id}/preferences/raw`，body 为 `{"preferences":[…]}`）。
+     */
+    fun writeSourcePreferenceValues(sourceId: Long, body: String): String? = null
+
+    /**
      * 扩展**自己 APK 里**的图标（PNG 字节），拿不到返回 null（`GET /icon/{pkg}`）。
      *
      * `extension.icon_url` 只有**仓库索引**会填，从系统装进来的扩展没有索引行，

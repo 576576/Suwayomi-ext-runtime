@@ -58,7 +58,6 @@ dependencies {
     implementation(project(":ext-runtime:android-stub"))
     implementation("com.typesafe:config:1.4.9")
     implementation("io.github.config4k:config4k:0.7.0")
-    implementation("ca.gosyer:kotlin-multiplatform-appdirs:2.0.0")
 }
 
 application {
@@ -68,13 +67,13 @@ application {
 kotlin {
     // 统一 Java 25：与 CI setup-java（Temurin 25）及发布捆绑的 JRE 25 一致
     jvmToolchain(25)
-    // 钉死模块名，避免 @Metadata 跟着 group / 仓库名 / 子项目路径漂移（见 docs/EXTRACTION_RECORD.md）
+    // 钉死模块名，避免 @Metadata 跟着 group / 仓库名 / 子项目路径漂移（见 docs/agent/plans/extraction-record.md）
     compilerOptions {
         moduleName.set("suwayomi-ext-runtime")
     }
     // 共享源码树：`eu.kanade.tachiyomi.**` 接口实现、SourceDriver、Router 等
     // 与平台无关的部分由桌面沙盒和 Android extension-host 共同编译，避免两份实现漂移。
-    // 它必须是一个**独立源根**，Android 侧只吃这一个根 —— 原因见 docs/EXTRACTION_RECORD.md。
+    // 它必须是一个**独立源根**，Android 侧只吃这一个根 —— 原因见 docs/agent/plans/extraction-record.md。
     sourceSets["main"].kotlin.srcDir("src/shared/kotlin")
 }
 
@@ -115,7 +114,7 @@ val verifyStubDedup by tasks.registering {
 
 tasks.jar {
     dependsOn(verifyStubDedup)
-    // 部署名固定为 ext-runtime.jar（Rust 侧按这个名字找，见 docs/EXTRACTION_RECORD.md）
+    // 部署名固定为 ext-runtime.jar（Rust 侧按这个名字找，见 docs/agent/plans/extraction-record.md）
     archiveFileName.set("ext-runtime.jar")
     manifest {
         attributes["Main-Class"] = "sandbox.MainKt"
@@ -144,7 +143,7 @@ tasks.named("assemble") {
 // --- 发布到 GitHub Packages -------------------------------------------------
 // 坐标：com.github.576576.suwayomi-ext-runtime:ext-runtime
 // 一个 artifactId、两个制品（fat jar + classifier=shared-sources），归属同一个 package。
-// 凭据从环境变量取、由 CI 注入；跨仓库消费的授权方式见 docs/EXTRACTION_RECORD.md。
+// 凭据从环境变量取、由 CI 注入；跨仓库消费的授权方式见 docs/agent/plans/extraction-record.md。
 group = "com.github.576576.suwayomi-ext-runtime"
 version = providers.gradleProperty("extRuntimeVersion").orElse("0.0.0-dev").get()
 

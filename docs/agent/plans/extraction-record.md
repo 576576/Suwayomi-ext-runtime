@@ -3,7 +3,7 @@
 P2 / P3 落地过程中实际做了什么、为什么这么做、哪些路走不通。
 决策与试错的**唯一记录处**；构建脚本里只留结论性一句话，具体论证看这里。
 
-计划本身（决策 L1–L9、陷阱 T1–T13、验收矩阵 V1–V12）见 [`EXTRACTION_PLAN.md`](./EXTRACTION_PLAN.md)。
+计划本身（决策 L1–L9、陷阱 T1–T13、验收矩阵 V1–V12）见 [`extraction-plan.md`](./extraction-plan.md)。
 
 ---
 
@@ -79,8 +79,9 @@ CI 里「build 之后断言文件存在」会失败。
 对照物：`Suwayomi-next/jvm-sandbox/build/libs/suwayomi-jvm-sandbox.jar`
 （基线 commit `888a2be6`，md5 `9ffabd5dbcfeb662726167d7d796c834`）。
 
-比对脚本：[`.workbuddy-ai/baseline/verify-semantic.py`](../.workbuddy-ai/baseline/verify-semantic.py)
-（用 `javap -c -p` 反汇编，抹掉模块名与常量池索引后逐方法比对）。
+比对脚本：[`scripts/verify-semantic.py`](../../../scripts/verify-semantic.py)
+（用 `javap -c -p` 反汇编，抹掉模块名与常量池索引后逐方法比对；用法
+`python scripts/verify-semantic.py <旧.jar> <新.jar>`）。
 
 结果：
 
@@ -98,7 +99,7 @@ CI 里「build 之后断言文件存在」会失败。
   方法体逐字节相同。方法顺序不影响 JVM 语义。
 - `sandbox/*.class` 50 = 50、`eu/kanade/tachiyomi/` 85 = 85、`suwayomi/tachidesk/` 6 = 6、
   `android/` 3599 = 3599，集合完全一致。
-- `META-INF/android-stub.properties` 与 P0 基线**逐字段一致**（`version=30.r03.1`）。
+- `META-INF/android-stub.properties` 与 P0 基线**逐字段一致**（含 `version`，即当时 pin 推导出的桩版本号）。
 
 jar 体积 45382030 → 45381739（少 291 字节）＝ 上面两个类的成员表增量（各 +30、+26 字节）
 减去若干 `.kotlin_module` 名字变短。
@@ -225,13 +226,13 @@ ext-runtime 照抄这个模式：`scripts/resolve-ext-runtime.sh`，输出 `ext_
 `versionCode = 本仓提交数 + 1000`。规则照 Suwayomi-next 那套（把提交数折进版本名），
 只是基线是自己的：主仓 `+3000` / `3.y.z`，本仓 `+1000` / `<api>.y.z`。
 
-大版本**跟着 `android-stub` 的公开 API 基线走**，与 android-stub 自己的 `30.r03.1`
-是同一套思路（那个是 `<api>.<包修订>.<剥离修订>`）：看一眼版本号就知道它对应哪个 Android API。
+大版本**跟着 `android-stub` 的公开 API 基线走**，与 android-stub 自己的
+`<api>.<包修订>.<剥离修订>` 是同一套思路：看一眼版本号就知道它对应哪个 Android API。
 
 | 版本 | 含义 |
 | --- | --- |
-| `30.0.47` | 对应 AOSP API 30（`platform-30_r03`），ext-runtime 提交数 47 |
-| `31.0.52` | AOSP 基线升到 API 31 —— 大版本跟着 pin 自动走，后面的计数继续往前 |
+| `<api>.0.47` | 当前基线 + ext-runtime 提交数 47 |
+| `<api+1>.0.52` | AOSP 基线升了一级 —— 大版本跟着 pin 自动走，后面的计数继续往前 |
 
 `release.yml` 的 prep 直接从 `ext-runtime/android-stub/android-stub.properties` 读
 `aospApiLevel` 当大版本：不再是「版本号手填错了会不会发错版」的问题，大版本由 pin 推导，
@@ -264,7 +265,7 @@ alpha/beta 跟最新构建（`--build`）—— 与它挑 WebUI 的方式一致�
 | # | 项 | 结果 | 证据 |
 | --- | --- | --- | --- |
 | V1 | 本仓独立构建 | ✅ | `./gradlew clean build` 绿；两个制品齐 |
-| V2 | AOSP 溯源 | ✅ | `META-INF/android-stub.properties` 逐字段与 P0 基线一致（`version=30.r03.1`） |
+| V2 | AOSP 溯源 | ✅ | `META-INF/android-stub.properties` 逐字段与 P0 基线一致（含 `version`） |
 | V3 | 桩去重 | ✅ | 16416 个 class，零重名；三个 `moduleName` 都已钉死 |
 | V4 | 共享源码制品 | ✅ | 51 个 `.kt`，含 `eu/kanade/tachiyomi/source/Source.kt`，**不含** `sandbox/Main.kt` |
 | V5 | 沙盒脱离服务端跑 | ✅ | `/health` → `{"ok":true,"extensions":192,"sources":1183}` |

@@ -1,5 +1,5 @@
 // 扩展运行时（extension runtime）：共享源码树 + 桌面 JVM 沙盒宿主。
-// 单一 Gradle 构建，模块目录 `ext-runtime/` 由剥离流程导入（见 docs/EXTRACTION_RECORD.md）。
+// 单一 Gradle 构建，模块目录 `ext-runtime/` 由剥离流程导入（见 docs/agent/plans/extraction-record.md）。
 pluginManagement {
     repositories {
         gradlePluginPortal()

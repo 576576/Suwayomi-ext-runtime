@@ -86,7 +86,7 @@ fun setupInjekt() {
         // `ProtoBuf.Companion` 注册进去，`get<ProtoBuf>()` 照样找不到。
         single<ProtoBuf> { ProtoBuf }
         // `CustomContext`（见 AndroidEnv.installSandboxContext）构造期按类型从 Koin 取这几
-        // 个。上游由 `androidCompatModule()` 提供，但那个模块还带一条 `single<Context>`，
+        // 个。参考实现由 `androidCompatModule()` 提供，但那个模块还带一条 `single<Context>`，
         // 会和上面的 SandboxApp 撞定义，所以这里只挑它要的几条。
         single { AndroidFiles() }
         single { ApplicationInfoImpl(GlobalConfigManager) }

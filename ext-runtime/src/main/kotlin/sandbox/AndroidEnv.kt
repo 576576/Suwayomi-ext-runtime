@@ -62,7 +62,8 @@ fun startMainLooper() {
  * `GlobalConfigManager.INSTANCE.module(SystemConfigModule::class.java)`，没注册就是空指针；
  * 于是凡是在 `headersBuilder()` 里读 `Build.MANUFACTURER` / `Build.VERSION.RELEASE` 的扩展
  * 都倒在 `NoClassDefFoundError: xyz.nulldev.ts.config.ConfigManager` 上。
- * 上游由 server 侧的 `AndroidCompatInitializer` 做这件事，沙盒里没有那个入口。
+ * 参考实现（Suwayomi-Server）由 server 侧的 `AndroidCompatInitializer` 做这件事，
+ * 沙盒里没有那个入口。
  *
  * `FilesConfigModule` / `ApplicationInfoConfigModule` 是 [installSandboxContext] 要用的
  * `CustomContext` 拉起来的（`AndroidFiles` / `ApplicationInfoImpl` 构造期就取配置）。
