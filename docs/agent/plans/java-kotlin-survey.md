@@ -12,9 +12,9 @@
 
 1. **删掉 1,495 行死代码** —— 2026-09-30 已删，见 §五；
 2. **把沙盒侧的 config 子系统抽给 Rust** —— 2026-09-30 已做，见
-   [`RUST_HANDOFF.md`](RUST_HANDOFF.md)（顺带去掉 `appdirs` 依赖）。
+   [`rust-handoff.md`](rust-handoff.md)（顺带去掉 `appdirs` 依赖）。
 
-配套：[`REF_IMPL_DIFF.md`](REF_IMPL_DIFF.md) —— 与参考实现（**Suwayomi-Server** 的
+配套：[`reference-implementations.md`](../reference-implementations.md) —— 与参考实现（**Suwayomi-Server** 的
 `AndroidCompat/`，以及 **Mihon** 的扩展 API）的差异对照，外加 `org/json` / `quickjs`
 有没有 Kotlin 实现可换。**本仓不与参考实现同步**，两者只是对照与溯源关系。
 
@@ -63,7 +63,7 @@
 2. **改动面不可控、可追溯性变差**。这些文件来自参考实现
    [Suwayomi-Server 的 `AndroidCompat/`](https://github.com/Suwayomi/Suwayomi-Server)，
    本仓**零自建文件**——逐文件 sha256 比对：300 个文件里 **288 个与参考实现逐字节一致**
-   （见 `REF_IMPL_DIFF.md`）。整体 Kotlin 化之后，「哪些偏差是本仓有意改的、哪些是翻译过程
+   （见 [`reference-implementations.md`](../reference-implementations.md)）。整体 Kotlin 化之后，「哪些偏差是本仓有意改的、哪些是翻译过程
    引入的」会混在一起，将来回溯某个行为差异得先分辨这个。
    注意：本仓**不与参考实现同步**，所以这不是"同步成本"问题，而是**可追溯性**问题——
    它比同步成本弱，但仍然存在。
@@ -112,7 +112,7 @@
 | 优先级 | 动作 | 规模 | 风险 |
 | --- | --- | --- | --- |
 | ~~P0~~ | 删 `replace/java/**` + `JsonSharedPreferences.java` + `DuktapeStub.java` | **−1,495 行，已完成** | 已复核：全仓 grep 无引用、`./gradlew build` 全绿、桩 jar CRC 逐字节不变（剥离集合未受影响）、fat jar 51,528,049 → 51,505,841 B（17,821 → 17,813 类）。`com.ibm.icu` 是唯一被死代码用到的依赖，`compileOnly("com.ibm.icu:icu4j:78.3")` 一并移除 |
-| ~~P2~~ | config 子系统抽给 Rust（`SUWAYOMI_APPDATA_DIR` + `-D` 覆盖） | **已完成** | 见 [`RUST_HANDOFF.md`](RUST_HANDOFF.md)：根由 Rust 侧那个 env 决定，去掉 `appdirs`；三个 config 模块改为可被 `-D` 逐项覆盖。实测三种启动方式均符合预期 |
+| ~~P2~~ | config 子系统抽给 Rust（`SUWAYOMI_APPDATA_DIR` + `-D` 覆盖） | **已完成** | 见 [`rust-handoff.md`](rust-handoff.md)：根由 Rust 侧那个 env 决定，去掉 `appdirs`；三个 config 模块改为可被 `-D` 逐项覆盖。实测三种启动方式均符合预期 |
 | P1 | `BuildConfigCompat.java` / `RCompat.java` 迁 Kotlin | 105 行 | 低（顺手验证剥离与 dedup 不受影响） |
 | P3 | `pm/*` + `FakePackageManager` 收口 | ~1,084 行 | 中（先摸清哪些方法被真实调用） |
 | 不做 | `android/**` 78,753 行整体 Kotlin 化 | — | 收益为负，见 §二 |

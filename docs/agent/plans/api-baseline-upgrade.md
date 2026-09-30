@@ -2,7 +2,7 @@
 
 > 2026-09-30 记录，**一次性迁移记录**：下文是当时这次换基线的实测数据与施工步骤，
 > 里面的版本号都是**当时的对照值**，不代表当前状态。
-> **当前基线以 [`ext-runtime/android-stub/android-stub.properties`](../../ext-runtime/android-stub/android-stub.properties)
+> **当前基线以 [`ext-runtime/android-stub/android-stub.properties`](../../../ext-runtime/android-stub/android-stub.properties)
 > 的 pin 为准** —— 除它之外仓库里没有第二处写死基线。
 >
 > 当时**已实测通过**：改 pin 后 `./gradlew build` 全绿，16 项测试 0 失败、
@@ -97,7 +97,7 @@ android/view/textclassifier/TextClassifierEvent$1
    换回约 1 MB 体积 —— 但每加一条排除都要承担「某个扩展真的链了它」的风险，
    建议先跑一轮 `ext_survey.py` 看真实缺失清单再决定。
 
-## 验收步骤（按 SANDBOX_DETAILS.md 的台架）
+## 验收步骤（按 [`sandbox.md`](../sandbox.md) 的台架）
 
 ```bash
 # 1. 清缓存看真实警告（增量构建会跳过编译，看不到警告）

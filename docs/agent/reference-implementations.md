@@ -59,7 +59,7 @@
    抛 `NullPointerException` / `IllegalArgumentException`，而 Java 原实现可能是静默容忍或抛别的。
    扩展 `catch` 的异常类型一旦漂移，表现为「加载率没变、可用率掉了」——编译期和单测都发现不了，
    只有 `ext_survey.py` 看得出来。
-3. **收益本来就小**：见 `JAVA_KOTLIN_SURVEY.md`——真正值得迁的只有 105 行。
+3. **收益本来就小**：见 [`java-kotlin-survey.md`](plans/java-kotlin-survey.md)——真正值得迁的只有 105 行。
 
 所以结论没变（**当前不迁**），但**理由变了**：不再是"怕毁掉同步"，而是"签名契约风险
 + 收益太小"。若将来要迁，现在可以更自由地从那 12 个已改动文件下手（它们本来就已经偏离

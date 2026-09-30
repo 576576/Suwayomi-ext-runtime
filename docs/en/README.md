@@ -81,18 +81,23 @@ public AOSP API (Apache-2.0).
 
 ## Documentation
 
-`docs/agent/` holds maintainer-oriented working notes (including for AI agents), not public docs:
+`docs/agent/` holds maintainer-oriented working notes (including for AI agents), not public docs.
+Contract docs (what things are, what to watch out for) live in `docs/agent/`; plans and research in
+`docs/agent/plans/`. Each level has its own index (`docs/agent/README.md`, `docs/agent/plans/README.md`):
 
-- [`docs/agent/EXTRACTION_PLAN.md`](../agent/EXTRACTION_PLAN.md) — extraction work plan (Chinese)
-- [`docs/agent/EXTRACTION_RECORD.md`](../agent/EXTRACTION_RECORD.md) — decisions and trial-and-error log
-  (directory layout, JRE ownership, etc.) (Chinese)
-- [`docs/agent/SANDBOX_DETAILS.md`](../agent/SANDBOX_DETAILS.md) — measured details and pitfalls of
-  sandbox loading / translation / driving (Chinese)
-- [`docs/agent/API36_UPGRADE.md`](../agent/API36_UPGRADE.md) — Android public API baseline upgrade:
-  measured results and upgrade notes; a one-off migration record (Chinese)
-- [`docs/agent/JAVA_KOTLIN_SURVEY.md`](../agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin migration and
-  Rust-side extraction survey (Chinese)
-- [`docs/agent/REF_IMPL_DIFF.md`](../agent/REF_IMPL_DIFF.md) — diff against the reference implementations
-  (Suwayomi-Server / Mihon) and whether Kotlin replacements exist for `org/json` / `quickjs` (Chinese)
-- [`docs/agent/RUST_HANDOFF.md`](../agent/RUST_HANDOFF.md) — config handed off to Rust (done) + ownership
-  evaluation for SQLite and preference persistence (Chinese)
+- [`docs/agent/sandbox.md`](../agent/sandbox.md) — sandbox loading / translation / driving: current
+  behaviour and pitfalls (Chinese)
+- [`docs/agent/reference-implementations.md`](../agent/reference-implementations.md) — where this repo
+  deviates from the two reference implementations (Suwayomi-Server / Mihon), and why `org/json` /
+  `quickjs` have no swap-in Kotlin replacement (Chinese)
+- [`docs/agent/plans/extraction-plan.md`](../agent/plans/extraction-plan.md) — extraction work plan (Chinese)
+- [`docs/agent/plans/extraction-record.md`](../agent/plans/extraction-record.md) — what the extraction
+  actually did: directory layout, JRE ownership, acceptance matrix (Chinese)
+- [`docs/agent/plans/api-baseline-upgrade.md`](../agent/plans/api-baseline-upgrade.md) — one-off record
+  of the Android public API baseline bump (Chinese)
+- [`docs/agent/plans/java-kotlin-survey.md`](../agent/plans/java-kotlin-survey.md) — Java → Kotlin
+  migration and Rust-side extraction survey (Chinese)
+- [`docs/agent/plans/rust-handoff.md`](../agent/plans/rust-handoff.md) — config handed off to Rust (done)
+  + ownership evaluation for SQLite and preference persistence (Chinese)
+- [`docs/agent/plans/stub-slimming.md`](../agent/plans/stub-slimming.md) — keeping unused libraries out
+  of the final jar: exclusion sets, savings, verification gate (Chinese)

@@ -3,7 +3,7 @@
 P2 / P3 落地过程中实际做了什么、为什么这么做、哪些路走不通。
 决策与试错的**唯一记录处**；构建脚本里只留结论性一句话，具体论证看这里。
 
-计划本身（决策 L1–L9、陷阱 T1–T13、验收矩阵 V1–V12）见 [`EXTRACTION_PLAN.md`](./EXTRACTION_PLAN.md)。
+计划本身（决策 L1–L9、陷阱 T1–T13、验收矩阵 V1–V12）见 [`extraction-plan.md`](./extraction-plan.md)。
 
 ---
 
@@ -79,8 +79,9 @@ CI 里「build 之后断言文件存在」会失败。
 对照物：`Suwayomi-next/jvm-sandbox/build/libs/suwayomi-jvm-sandbox.jar`
 （基线 commit `888a2be6`，md5 `9ffabd5dbcfeb662726167d7d796c834`）。
 
-比对脚本：[`.workbuddy-ai/baseline/verify-semantic.py`](../.workbuddy-ai/baseline/verify-semantic.py)
-（用 `javap -c -p` 反汇编，抹掉模块名与常量池索引后逐方法比对）。
+比对脚本：[`scripts/verify-semantic.py`](../../../scripts/verify-semantic.py)
+（用 `javap -c -p` 反汇编，抹掉模块名与常量池索引后逐方法比对；用法
+`python scripts/verify-semantic.py <旧.jar> <新.jar>`）。
 
 结果：
 

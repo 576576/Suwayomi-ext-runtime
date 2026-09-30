@@ -67,12 +67,15 @@ Mihon/Tachiyomi 扩展 API 形状（Apache-2.0, Copyright 2015 Javier Tomás）�
 
 英文版：[`docs/en/README.md`](docs/en/README.md)。
 
-`docs/agent/` 是面向维护者（含 AI agent）的施工文档，不参与对外说明：
+`docs/agent/` 是面向维护者（含 AI agent）的施工文档，不参与对外说明。
+契约型文档（现在是什么样、改的时候要注意什么）在 `docs/agent/`，方案与计划在 `docs/agent/plans/`，
+两层各有索引（[`docs/agent/README.md`](docs/agent/README.md)、[`docs/agent/plans/README.md`](docs/agent/plans/README.md)）：
 
-- [`docs/agent/EXTRACTION_PLAN.md`](docs/agent/EXTRACTION_PLAN.md) — 剥离施工计划
-- [`docs/agent/EXTRACTION_RECORD.md`](docs/agent/EXTRACTION_RECORD.md) — 决策与试错记录（含目录布局、JRE 归属等细节）
-- [`docs/agent/SANDBOX_DETAILS.md`](docs/agent/SANDBOX_DETAILS.md) — 沙盒加载 / 转换 / 驱动的实测细节与踩坑清单
-- [`docs/agent/API36_UPGRADE.md`](docs/agent/API36_UPGRADE.md) — Android 公开 API 基线升级的实测与施工要点（一次性迁移记录）
-- [`docs/agent/JAVA_KOTLIN_SURVEY.md`](docs/agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin 迁移与 Rust 侧抽离的盘点结论
-- [`docs/agent/REF_IMPL_DIFF.md`](docs/agent/REF_IMPL_DIFF.md) — 与参考实现（Suwayomi-Server / Mihon）的差异对照，`org/json` / `quickjs` 的 Kotlin 实现调研
-- [`docs/agent/RUST_HANDOFF.md`](docs/agent/RUST_HANDOFF.md) — config 抽离给 Rust（已做）+ SQLite / 偏好落盘的归属评估
+- [`docs/agent/sandbox.md`](docs/agent/sandbox.md) — 沙盒加载 / 转换 / 驱动的现状与踩坑清单
+- [`docs/agent/reference-implementations.md`](docs/agent/reference-implementations.md) — 与两个参考实现（Suwayomi-Server / Mihon）的口径差异，`org/json` / `quickjs` 为什么没有可换的 Kotlin 实现
+- [`docs/agent/plans/extraction-plan.md`](docs/agent/plans/extraction-plan.md) — 剥离施工计划
+- [`docs/agent/plans/extraction-record.md`](docs/agent/plans/extraction-record.md) — 剥离落地记录（目录布局、JRE 归属、验收矩阵等）
+- [`docs/agent/plans/api-baseline-upgrade.md`](docs/agent/plans/api-baseline-upgrade.md) — 换 Android 公开 API 基线的一次性记录
+- [`docs/agent/plans/java-kotlin-survey.md`](docs/agent/plans/java-kotlin-survey.md) — Java → Kotlin 迁移与 Rust 侧抽离的盘点结论
+- [`docs/agent/plans/rust-handoff.md`](docs/agent/plans/rust-handoff.md) — config 抽离给 Rust（已做）+ SQLite / 偏好落盘的归属评估
+- [`docs/agent/plans/stub-slimming.md`](docs/agent/plans/stub-slimming.md) — 让最终 jar 不打包无用库：排除集、收益与验证闸门

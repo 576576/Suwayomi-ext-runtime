@@ -32,7 +32,7 @@ dependencies {
     // 编译期用得到、运行期走不到的地方：注解（保留策略让它们不进 fat jar）。
     // 原先还有 `replace/java/**`（全仓无引用，且是唯一用 com.ibm.icu 的地方）与
     // `JsonSharedPreferences.java`（无引用）两处死代码，2026-09-30 已删，icu4j 随之移除
-    // —— 见 docs/agent/JAVA_KOTLIN_SURVEY.md。
+    // —— 见 docs/agent/plans/java-kotlin-survey.md。
     compileOnly("org.jetbrains:annotations:26.0.2")
     compileOnly("androidx.annotation:annotation:1.10.0")
     compileOnly("com.fasterxml.jackson.core:jackson-annotations:2.22")

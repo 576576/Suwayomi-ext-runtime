@@ -18,7 +18,7 @@ name: Release
 #                 后两位是本仓提交数（主仓的后两位也是它自己的提交数）。
 #   tag     release → v{版本名} / beta → v{版本名}-beta.{run_id} / alpha → {版本名}-alpha.{run_id}
 #
-# 坐标、制品构成、认证与消费方式见 docs/agent/EXTRACTION_RECORD.md
+# 坐标、制品构成、认证与消费方式见 docs/agent/plans/extraction-record.md
 
 on:
   push:
