@@ -78,4 +78,4 @@ Mihon/Tachiyomi 扩展 API 形状（Apache-2.0, Copyright 2015 Javier Tomás）�
 - [`docs/agent/plans/api-baseline-upgrade.md`](docs/agent/plans/api-baseline-upgrade.md) — 换 Android 公开 API 基线的一次性记录
 - [`docs/agent/plans/java-kotlin-survey.md`](docs/agent/plans/java-kotlin-survey.md) — Java → Kotlin 迁移与 Rust 侧抽离的盘点结论
 - [`docs/agent/plans/rust-handoff.md`](docs/agent/plans/rust-handoff.md) — config 抽离给 Rust（已做）+ SQLite / 偏好落盘的归属评估
-- [`docs/agent/plans/stub-slimming.md`](docs/agent/plans/stub-slimming.md) — 让最终 jar 不打包无用库：排除集、收益与验证闸门
+- [`docs/agent/plans/stub-slimming.md`](docs/agent/plans/stub-slimming.md) — 让最终 jar 不打包无用库：排除集、收益与验证闸门（P0 已落地，45.91 → 24.83 MiB）

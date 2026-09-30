@@ -138,6 +138,10 @@ val writeProvenance by tasks.registering(WriteProperties::class) {
     property("aosp.platform.jar.sha256", jarSha256)
     property("aosp.prebuilts.commit", prebuiltsCommit)
     property("stub.strip.revision", stripRevision)
+    // 构成标记：P0 起桩里不再打包 AOSP 的框架资源（res/ + resources.arsc + assets/ +
+    // AndroidManifest.xml）。留着这一行，是为了让「这个 jar 是什么构成」随产物走 ——
+    // 拿到一个 ext-runtime.jar 时不必去翻构建脚本就知道它有没有资源树。
+    property("stub.exclude.resources", "true")
 }
 
 tasks.jar {
@@ -152,6 +156,12 @@ tasks.jar {
     from(aospJar.map { project.zipTree(it.asFile) }) {
         exclude(coreLibPrefixes.flatMap { listOf("$it/**", "$it/") })
         exclude(patterns)
+        // AOSP 的 android.jar 里 84% 的体积不是 class，而是整套框架资源（resources.arsc 4.50 MiB
+        // + res/ 8,425 条 14.90 MiB + assets/ + AndroidManifest.xml）。桌面沙盒不读它们：全仓只有
+        // ExtensionLoader.isJarResource() 在过滤「扩展 APK」的 res，apk-parser 读的也是扩展 APK
+        // 的资源表，没有一处读桩自己那份。NOTICES/ 保留 —— 里面是 libcore 的署名，我们确实在
+        // 分发 AOSP 的类。改动排除清单后记得 +1 stripRevision（见 android-stub.properties）。
+        exclude("res/**", "resources.arsc", "assets/**", "AndroidManifest.xml")
         // 本任务自己写 manifest，不带 AOSP 包里那份
         exclude("META-INF/MANIFEST.MF")
     }

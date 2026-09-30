@@ -1,31 +1,31 @@
 # 让最终 jar 不打包无用库（2026-09-30 调研）
 
-> 现状 `ext-runtime.jar` = **45.91 MiB**。其中与扩展**完全无关**的 AOSP 资源占 **19.70 MiB（43%）**。
-> 三档排除合计可到 **21.50 MiB（−53%）**；P1 走类清单则到 **19.58 MiB（−57%）**。
-> **落地情况：尚未实施**，等确认。本文的每个数字都是实测，不是估算。
+> 改造前 `ext-runtime.jar` = **45.91 MiB**。其中与扩展**完全无关**的 AOSP 框架资源占 **19.68 MiB（43%）**。
+> **P0 已落地（2026-09-30）：45.91 → 24.83 MiB（−21.08 MiB，−45.9%）**，台架闸门 192/192 通过。
+> **P1 / P2 搁置**，理由见文末「搁置决策」。本文的每个数字都是实测，不是估算。
 
 ## 结论先行
 
-| 档 | 内容 | 省（压缩后） | 兼容风险 | 前置条件 |
+| 档 | 内容 | 省（压缩后） | 兼容风险 | 状态 |
 |---|---|---|---|---|
-| **P0** | 桩里的 `res/` + `resources.arsc` + `assets/` + `AndroidManifest.xml` | **19.68 MiB** | **无** —— 仓库里没有任何代码读它们（证据见下） | 无 |
-| **P1** | 桩里没人链接的类（实测 4,246/4,503 = 94.3%） | **1.08 MiB**（整包前缀）／**3.00 MiB**（类清单） | 收窄链接面：第三方扩展若链了被排除的类，加载期 `NoClassDefFoundError` | 台架跑闸门 |
-| **P2** | 应用侧无人引用的依赖（RxJava 2 / Gson / Moshi / okhttp-zstd） | **3.65 MiB** | 收窄扩展可用库面（但 Mihon 的扩展面也没有这几个） | 台架跑闸门 |
+| **P0** | 桩里的 `res/` + `resources.arsc` + `assets/` + `AndroidManifest.xml` | **21.08 MiB**（实测） | **无** —— 仓库里没有任何代码读它们（证据见下） | **已落地** |
+| **P1** | 桩里没人链接的类（实测 4,246/4,503 = 94.3%） | 1.08 MiB（整包前缀）／3.00 MiB（类清单） | 收窄链接面：第三方扩展若链了被排除的类，加载期 `NoClassDefFoundError` | 搁置 |
+| **P2** | 应用侧无人引用的依赖（RxJava 2 / Gson / Moshi / okhttp-zstd） | 3.65 MiB | 收窄扩展可用库面 —— 但新库随时会有新扩展依赖 | 搁置 |
 
-P0 是纯赚，建议先做；P1/P2 是「拿兼容面换体积」，要不要做取决于是否愿意接受「非 keiyoushi 扩展可能链到被砍的东西」。
+P0 是纯赚，已做完。P1/P2 是「拿兼容面换体积」，搁置理由见文末。
 
 ## 一、体积账（实测）
 
-`ext-runtime.jar`：24,873 条目，未压缩 90.44 MiB，条目压缩合计 41.47 MiB，**文件 45.91 MiB**。
+改造前 `ext-runtime.jar`：24,873 条目，未压缩 90.44 MiB，条目压缩合计 41.47 MiB，**文件 45.91 MiB**。
 
 | 内容 | 条目 | 未压缩 | 压缩后 |
 |---|---|---|---|
-| `res/`（AOSP 框架资源：壁纸、锁屏图、图标…） | 8,339 | 16.42 MiB | **14.90 MiB** |
+| `res/`（AOSP 框架资源：壁纸、锁屏图、图标…） | 8,425 | 16.42 MiB | **14.90 MiB** |
 | `resources.arsc`（AOSP 框架资源表） | 1 | 17.38 MiB | **4.50 MiB** |
 | `jni/`（okhttp-zstd 的 6 个原生库：3 OS × 2 arch） | 6 | 3.52 MiB | 1.37 MiB |
-| `assets/`（AOSP 框架自带图片） | 20 | 0.22 MiB | 0.22 MiB |
+| `assets/`（AOSP 框架自带图片） | 24 | 0.22 MiB | 0.22 MiB |
 | `AndroidManifest.xml`（AOSP 框架清单） | 1 | 0.37 MiB | 0.06 MiB |
-| `NOTICES/`（libcore 署名） | 1 | 0.45 MiB | 0.02 MiB |
+| `NOTICES/`（libcore 署名） | 2 | 0.45 MiB | 0.02 MiB |
 | `.class` 合计 | 16,399 | 51.65 MiB | 20.28 MiB |
 
 class 里的大头（压缩后）：AOSP 桩 3.26 MiB（4,503 类）、`kotlin/reflect` 2.65、`io/reactivex`（RxJava 2）1.89、
@@ -36,10 +36,10 @@ class 里的大头（压缩后）：AOSP 桩 3.26 MiB（4,503 类）、`kotlin/r
 `kotlinx.serialization` 的反射路径也依赖）。同理 `okhttp3` 虽然 0 个扩展直接链（扩展走共享源码树的
 `NetworkHelper`），但应用侧在用。
 
-## 二、P0：桩里的非 class 内容 —— 19.68 MiB，零兼容风险
+## 二、P0：桩里的非 class 内容 —— 19.68 MiB，零兼容风险（已落地）
 
 `android-stub` 是按源码路径剥离 AOSP `android.jar` 得到的，而 AOSP 的 `android.jar` 里
-**84% 的体积不是 class**：它带整套框架资源（`resources.arsc` 17.38 MiB + `res/` 8,339 个文件）。
+**84% 的体积不是 class**：它带整套框架资源（`resources.arsc` 17.38 MiB + `res/` 8 千多个文件）。
 桌面沙盒永远用不到它们 —— 我们用两条独立证据确认：
 
 1. **字符串扫描**：fat jar 里含 `resources.arsc` 字面量的只有 3 个类 —— `sandbox/ExtensionLoaderKt`
@@ -52,7 +52,7 @@ class 里的大头（压缩后）：AOSP 桩 3.26 MiB（4,503 类）、`kotlin/r
 fat jar 根部那两个 `r_values.ini` / `r_styles.ini`（各 0.03 MiB）**不是**从 `resources.arsc` 生成的
 —— 它们来自 `net.dongliu:apk-parser` 自带的 `ResourceLoader` 资源，砍掉桩的 `resources.arsc` 不影响它们。
 
-`NOTICES/` 建议**保留**（0.02 MiB）：里面是 libcore 的署名，我们确实在分发 AOSP 的类。
+`NOTICES/` **保留**（0.02 MiB）：里面是 libcore 的署名，我们确实在分发 AOSP 的类。
 
 **做法**（`ext-runtime/android-stub/build.gradle.kts` 的 `tasks.jar`，与已有的 `coreLibPrefixes`
 排除并列）：
@@ -63,10 +63,29 @@ fat jar 根部那两个 `r_values.ini` / `r_styles.ini`（各 0.03 MiB）**不�
 exclude("res/**", "resources.arsc", "assets/**", "AndroidManifest.xml")
 ```
 
-**连带要改的**：`stripRevision` 1 → 2（产物内容变了，见 pin 文件里那条约定），并在
-`writeProvenance` 里加一行 `stub.exclude.resources=true` 之类，让「这个 jar 是什么构成」随产物走。
+**连带改的**：`stripRevision` 1 → 2（产物内容变了，见 pin 文件里那条约定）；
+`writeProvenance` 里加一行 `stub.exclude.resources=true`，让「这个 jar 是什么构成」随产物走
+（拿到一个 `ext-runtime.jar` 时不必翻构建脚本就知道它有没有资源树）。
 
-## 三、P1：没人链接的桩类 —— 最多 3.00 MiB
+### 落地结果（2026-09-30 实测）
+
+| 制品 | 改造前 | 改造后 |
+|---|---|---|
+| `android-stub-<ver>.jar` | 25.12 MiB（`36.r02.1`） | **4.04 MiB**（`36.r02.2`） |
+| `ext-runtime.jar` | 45.91 MiB | **24.83 MiB（−21.08 MiB，−45.9%）** |
+
+核验：桩 jar 里 `res/`、`resources.arsc`、`assets/`、`AndroidManifest.xml` 四类条目**均为 0**；
+`NOTICES/libcore-NOTICES.txt` 保留；`META-INF/android-stub.properties` 读到
+`version=36.r02.2` + `stub.exclude.resources=true`。
+
+`ext-runtime.jar` 里仍有 2 条 `res/` 开头的条目（`res/`、`res/Hex.class`）—— 那是某个依赖里
+名为 `res` 的包（类 `res.Hex`），与 AOSP 资源树无关，不是残留。
+
+CI 里钉了一条不变量（`.github/workflows/build.yml` 的「校验制品」步）：fat jar 里出现
+`resources.arsc` / `assets/` / `AndroidManifest.xml` / `res/<小写目录>/` 任一即失败。
+`res/` 那棵树有 8 千多个条目，一旦被某个依赖带回来体积会静默涨回去，必须在 CI 挡住。
+
+## 三、P1：没人链接的桩类 —— 最多 3.00 MiB（搁置）
 
 ### 怎么算出来的
 
@@ -75,6 +94,13 @@ exclude("res/**", "resources.arsc", "assets/**", "AndroidManifest.xml")
 1. **扩展侧**：读每个扩展 APK 里 `classes*.dex` 的 `type_ids`（DEX 里所有类型引用都经这张表）。
    本次扫的是 **1,380 个 keiyoushi 扩展**（当前全量，缓存见下），得到 946 个被引用的类型，
    其中**落在桩里的只有 57 个**。
+
+   **覆盖面**：这 1,380 个与 keiyoushi 当前 `index.json` 逐条对得上（重拉索引核对：1,380 条，
+   不多不少）。上游会下架扩展 —— 旧版扩展的代表 **CopyManga** 已不在索引里，台架池子与下载
+   缓存都没有它，所以扫描集里没有。这类下架扩展另用本地留存的那份单独补扫过：
+   `tachiyomi-zh.copymanga-v1.4.53` 引用 283 个类型，落在桩里的只有 `android/webkit/ValueCallback`
+   一个，**已在 must_keep 内，新增保留 0 个类**。它用 RxJava **1**（`rx/Observable`、`rx/Single`、
+   `rx/schedulers/Schedulers`），正是第四节「RxJava 1 不能砍」那条的样本。
 2. **应用侧**：fat jar 里不属于桩的类（`android-compat` / `sandbox` / `eu.kanade` …）也引用桩。
    扫它们得到 205 个。
 3. **继承闭包**：JVM 在**加载**类时就要解析父类与接口（不像方法体那样惰性解析）。把可达集沿
@@ -111,17 +137,17 @@ dalvik/system
 | `android/graphics` | 142（留 29） | | `android/system` | 12（留 2） |
 | | | | `android/database` | 9（留 7） |
 
-**建议**：先只做整包那 37 个（1.08 MiB，37 行前缀，一眼能审），把类清单版留成
+**若将来要做**：先只做整包那 37 个（1.08 MiB，37 行前缀，一眼能审），把类清单版留成
 `-PstubSlim=full` 的可选档。为了 1.92 MiB 额外收益去维护一份 4,246 行的清单，性价比不高。
 
 ### 机制：让构建自己复核闭包
 
 类清单必须是**构建期可复核**的，否则一份过期的清单会静默变成运行时 `NoClassDefFoundError`。
-建议在 `android-stub/build.gradle.kts` 里加一个校验：读 `slim-exclusions.txt`（或前缀表）后，
+若要做，需在 `android-stub/build.gradle.kts` 里加一个校验：读 `slim-exclusions.txt`（或前缀表）后，
 扫桩里**被保留**的类的 `super`/`interfaces`，若有指向被排除类的就 fail。这条检查把「清单过期」
 从运行时故障降级成构建失败。
 
-## 四、P2：没人引用的依赖 —— 3.65 MiB
+## 四、P2：没人引用的依赖 —— 3.65 MiB（搁置）
 
 | 依赖 | fat jar 里 | 压缩后 | 扩展引用 | 应用引用 |
 |---|---|---|---|---|
@@ -136,21 +162,19 @@ RxJava 2 是纯死重：`io/reactivex/**` 在 fat jar 里**包外引用者 0**�
 
 这三个「0 引用」不是巧合 —— 看 Mihon 自己的扩展面（`gradle/libs.versions.toml` + `source-api`）：
 暴露给扩展的只有 `jsoup` / `injekt` / `kotlin-reflect` / `kotlinx-serialization(-json/-jsonOkio/-protobuf)`
-/ `quickjs` / `rxJava`（**1.x**）。**没有 gson、没有 moshi、没有 RxJava 2。** 砍掉它们是向参考实现
-的契约靠拢，不是偏离。
+/ `quickjs` / `rxJava`（**1.x**）。**没有 gson、没有 moshi、没有 RxJava 2。**
 
 `okhttp-zstd` 是另一回事：它只在站点返回 `Content-Encoding: zstd` 时才起作用，去掉后 okhttp
-不再声明支持 zstd，站点会退回 gzip。省 1.37 MiB 的代价是「万一某个站点只给 zstd」—— 风险低但非零，
-单独决策。
+不再声明支持 zstd，站点会退回 gzip。省 1.37 MiB 的代价是「万一某个站点只给 zstd」—— 风险低但非零。
 
 ## 五、落地顺序与机制汇总
 
-| 步骤 | 改哪里 | 复核手段 |
-|---|---|---|
-| P0 | `ext-runtime/android-stub/build.gradle.kts` 的 `tasks.jar` 加 4 条 `exclude`；`stripRevision` +1；provenance 记构成 | `./gradlew build` 绿 + `unzip -l` 看 `res/` 消失 |
-| P1（保守） | 同上，加 37 个包前缀的 `exclude` | 构建期闭包校验 + 台架闸门 |
-| P1（完整，可选） | 提交 `ext-runtime/android-stub/slim-exclusions.txt`，构建读它 | 同上 |
-| P2 | `ext-runtime/build.gradle.kts` 删 4 条 `implementation(...)` | `./gradlew build` 绿 + 台架闸门 |
+| 步骤 | 改哪里 | 复核手段 | 状态 |
+|---|---|---|---|
+| P0 | `ext-runtime/android-stub/build.gradle.kts` 的 `tasks.jar` 加 4 条 `exclude`；`stripRevision` +1；provenance 记构成 | `./gradlew build` 绿 + `unzip -l` 看 `res/` 消失 + CI 不变量 + 台架闸门 | **已落地** |
+| P1（保守） | 同上，加 37 个包前缀的 `exclude` | 构建期闭包校验 + 台架闸门 | 搁置 |
+| P1（完整，可选） | 提交 `ext-runtime/android-stub/slim-exclusions.txt`，构建读它 | 同上 | 搁置 |
+| P2 | `ext-runtime/build.gradle.kts` 删 4 条 `implementation(...)` | `./gradlew build` 绿 + 台架闸门 | 搁置 |
 
 `ext-runtime/android-stub/slim-exclusions.txt` 由 `scripts/ext-linkage-scan.py --out` 的
 `slim-analysis.json` 的 `excludable` 字段生成（一行一个内部类名，`#` 开头为注释）。
@@ -166,7 +190,7 @@ python ext_survey.py --root E:/Github/Suwayomi-builds/ext-lab \
 python ext_consistency.py --sandbox http://127.0.0.1:4599 --concurrent 3 --rounds 2
 ```
 
-**改造前基线（2026-09-30 实测，就是这个台架配当前 jar）**：
+**改造前基线（2026-09-30 实测，就是这个台架配改造前的 jar）**：
 
 ```
 /health          -> {"ok":true,"extensions":192,"sources":1168}
@@ -175,19 +199,53 @@ ext_consistency  -> 2/2 轮自洽（3 并发 × 2 轮，每轮都是 192 / 1168 
 ```
 
 验收口径：`loaded` = 192/192、`/sources` = 1,168、`failures` 为空、`ext_consistency` 自洽。
+
+**P0 之后复跑（同日，同一个台架）**：
+
+```
+/reload          -> {'ok': True, 'extensions': 192, 'sources': 1168, 'failures': []}
+ext_survey       -> 加载成功 192/192 = 100.0%（report-slim.json）
+ext_consistency  -> 2/2 轮自洽（每轮 192 / 1168 / 0 失败）
+sandbox.log      -> 无 fail/error/exception/NoClassDefFound 行
+```
+
+这一轮是**先把 `extensions/bin/` 里 145 个旧转换产物整体移走**再跑的，所以 192 个包是
+用新桩**从 APK 重新转换**出来的 —— 顺带覆盖了 apk-parser 读**扩展 APK** 资源表那条路径
+（它是 P0 里唯一碰 `resources.arsc` 的代码，读的确实是扩展 APK 而不是桩）。
+
 台架这次是用 keiyoushi 当前索引重建的（种子库里的 `apk_url` 指向的 release tag 已被上游删掉，
 已按当前索引回填），所以源总数与历史记录里的 1,183 不同 —— **以本节的 1,168 为基线**，别拿旧数字比。
 
 扩展链接面的原始证据（1,380 个 APK 的类型并集）在
 `E:/Github/Suwayomi-builds/ext-lab-cache/`（`apk/`、`slim-analysis.json`、`linkage-1380.json`）。
 
-## 七、风险与回滚
+## 七、搁置决策（2026-09-30）
 
-- **P1 的残留风险**是「非 keiyoushi 扩展链到被排除的类」。实测面覆盖 1,380 个 keiyoushi 扩展，
-  覆盖不了自建/第三方仓库。整包版的 37 个包都是语义上「漫画阅读器不可能用到」的子系统
-  （电话、蓝牙、健康、打印、NFC、无障碍、输入法、凭证…），残留风险集中在逐类版。
-- **P1 的维护成本**：换 API 基线或大批新扩展后清单会过期。构建期闭包校验能挡住「父类被砍」这一类，
-  挡不住「新扩展链了被砍的类」—— 后者只能靠闸门。
-- **P2 的残留风险**：非 keiyoushi 扩展用了 gson/moshi/RxJava 2。若收到这类反馈，把对应依赖加回来即可。
-- **回滚**：改动都在两个 `build.gradle.kts` 加一个可选清单文件里，`git revert` 即可；产物全是
-  `build/` 下的构建产物，工作树没有别的东西要还原。记得把 `stripRevision` 一并回退。
+**P1 与 P2 不做。** 理由不是「收益小到不值得」，而是**收益与风险的方向不一致**：
+
+- **P2 是在给未来的扩展砍路。** 体积账是「按今天这 1,380 个扩展算的」，但 keiyoushi 每周都在
+  收新扩展，新扩展会引入新库 —— RxJava 2、Gson、Moshi 这几个恰恰是「现在 0 引用、将来很可能
+  有引用」的典型（Mihon 自己的扩展面现在没有它们，不等于以后不加）。砍掉它们省 3.65 MiB，
+  代价是**以后每遇到一个用它们的扩展就得回来加一次依赖**，而且失败形态是运行期
+  `NoClassDefFoundError`（扩展装得上但一用就崩），不是构建期能挡住的。
+- **P1 的性价比更低。** 整包版只有 1.08 MiB（37 行，风险可控）；但 64% 的收益在逐类版，
+  需要维护一份 4,246 行的清单 + 构建期闭包校验。清单会随基线升级和新扩展过期，而过期的后果
+  同样是运行期 `NoClassDefFoundError`。用「长期维护负担 + 运行期故障面」换 3 MiB，不划算。
+- **P0 是另一类改动**：它砍的是**没有任何代码路径读**的东西（两条独立证据），风险为零，收益
+  21.08 MiB 已经超过 P1+P2 之和。做完 P0，剩下的 24.83 MiB 里绝大多数是真正在用的 class。
+
+若将来体积重新成为问题，**优先复查 P0 是否被回归**（CI 已钉住），再考虑 P1 整包版。
+
+## 八、风险与回滚
+
+- **P0 的残留风险：无。** 唯一的理论风险是「某段代码读桩自己的 `resources.arsc`」，已用字符串
+  扫描 + 源码扫描两条独立路径排除；台架从 APK 全量重转换后 192/192 通过。
+- **P1 的残留风险**（若将来做）是「非 keiyoushi 扩展链到被排除的类」。实测面覆盖 1,380 个
+  keiyoushi 扩展，覆盖不了自建/第三方仓库。整包版的 37 个包都是语义上「漫画阅读器不可能用到」
+  的子系统（电话、蓝牙、健康、打印、NFC、无障碍、输入法、凭证…），残留风险集中在逐类版。
+- **P2 的残留风险**（若将来做）：非 keiyoushi 扩展用了 gson/moshi/RxJava 2。若收到这类反馈，
+  把对应依赖加回来即可。
+- **回滚 P0**：`git revert` 那条 commit；或手动去掉 `tasks.jar` 里的 4 条 `exclude`、把
+  `stub.exclude.resources` 那行删掉、`stripRevision` 2 → 1。改动都在 `build.gradle.kts` 与
+  pin 文件里，产物全是 `build/` 下的构建产物，工作树没有别的东西要还原。回滚后**必须重跑第六节的
+  闸门**（`stripRevision` 回退会让版本号回到 `36.r02.1`，CI 断言与 provenance 都会跟着变）。

@@ -12,7 +12,7 @@
 | `api-baseline-upgrade.md` | 换 Android 公开 API 基线的一次性记录：新 pin 与两个 sha256、A/B 实测、被移除的类、基线字符串如何收敛到 pin 一处、回滚 |
 | `java-kotlin-survey.md` | Java → Kotlin 迁移与 Rust 侧抽离的盘点：只有 4 个文件值得考虑、`android/**` 那 78k 行为什么不能迁、工程约束与建议顺序 |
 | `rust-handoff.md` | 沙盒状态归谁：config 抽离给 Rust（已落地）+ SQLite / 偏好落盘的评估。判断原则是「扩展会不会同步调用它」 |
-| `stub-slimming.md` | 让最终 jar 不打包无用库：现状构成、分级排除集与各自收益、机制与验证闸门、风险与回滚 |
+| `stub-slimming.md` | 让最终 jar 不打包无用库：现状构成、分级排除集与各自收益、机制与验证闸门、风险与回滚。**P0 已落地**（45.91 → 24.83 MiB），P1/P2 搁置（理由见文末） |
 
 ## 维护约定
 
