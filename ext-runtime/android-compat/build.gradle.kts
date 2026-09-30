@@ -22,7 +22,6 @@ dependencies {
     implementation("io.insert-koin:koin-core:3.5.6")
     implementation("io.github.oshai:kotlin-logging-jvm:6.0.9")
     implementation("org.slf4j:slf4j-api:2.0.13")
-    implementation("ca.gosyer:kotlin-multiplatform-appdirs:2.0.0")
     implementation("org.jsoup:jsoup:1.18.1")
     implementation("io.reactivex:rxjava:1.3.8")
     implementation("net.dongliu:apk-parser:2.6.10")

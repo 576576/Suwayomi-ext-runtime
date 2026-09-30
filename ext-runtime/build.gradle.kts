@@ -58,7 +58,6 @@ dependencies {
     implementation(project(":ext-runtime:android-stub"))
     implementation("com.typesafe:config:1.4.9")
     implementation("io.github.config4k:config4k:0.7.0")
-    implementation("ca.gosyer:kotlin-multiplatform-appdirs:2.0.0")
 }
 
 application {
