@@ -1,7 +1,12 @@
 # Android 公开 API 基线 30 → 36（分支 `dump/api-36`）
 
-> 2026-09-30 记录。**已实测通过**：改 pin 后 `./gradlew build` 全绿，16 项测试 0 失败、
-> `verifyStubDedup` 无同名类。改动未提交，等你确认。
+> 2026-09-30 记录，**一次性迁移记录**：下文是当时这次换基线的实测数据与施工步骤，
+> 里面的版本号都是**当时的对照值**，不代表当前状态。
+> **当前基线以 [`ext-runtime/android-stub/android-stub.properties`](../../ext-runtime/android-stub/android-stub.properties)
+> 的 pin 为准** —— 除它之外仓库里没有第二处写死基线。
+>
+> 当时**已实测通过**：改 pin 后 `./gradlew build` 全绿，16 项测试 0 失败、
+> `verifyStubDedup` 无同名类。改动已提交。
 
 ## 结论先行
 
@@ -10,13 +15,13 @@
 下，本仓一行都没引用；新增的 1487 个类全是 `throw new RuntimeException("Stub!")` 的空壳，
 只在**链接期**被用到（扩展的 dex 链到它们，缺一个就是 `NoClassDefFoundError`，但从不调用）。
 
-所以升级 = 换 `android-stub.properties` 里的 pin + 同步 CI/文档里写死的基线字符串。
+所以升级 = 换 `android-stub.properties` 里的 pin。
 
 ## 新 pin（已实测）
 
 来源仍是 `dl.google.com`（`android.googlesource.com` 在开发机不可达，见 pin 文件注释）。
 仓库索引 `https://dl.google.com/android/repository/repository2-3.xml` 里，
-API 36 当前只有 **`platform-36_r02.zip`** 一个修订。
+API 36 当时只有 **`platform-36_r02.zip`** 一个修订。
 
 | 项 | API 30（旧） | API 36（新） |
 | --- | --- | --- |
@@ -58,29 +63,35 @@ android/view/textclassifier/TextClassifierEvent$1
 `android.adservices.*`（117）、`android.telephony`（45）—— 全是桌面沙盒永远不会走到的子系统，
 纯体积代价。
 
-## 已同步改掉的硬编码点
+## 基线字符串的收敛
 
-基线字符串散落在四处，换 pin 时必须一起改，否则 CI 直接红：
+**当时**基线字符串散落在四处，换 pin 必须一起改，否则 CI 直接红：
 
-- `.github/workflows/build.yml` 校验制品步：日志文案 `应为 30.r03.1` → `36.r02.1`，
-  断言 `grep -q '^version=30\.r03\.1$'` → `^version=36\.r02\.1$`
-  （这一步是**有意为之的不变量**：`unzip -p ext-runtime.jar META-INF/android-stub.properties`）。
+- `.github/workflows/build.yml` 校验制品步的日志文案与 `grep` 断言。
 - `.github/workflows/release.yml` 头部注释里的示例版本号（不影响行为）。
 - `.github/workflows/build.yml` 入参 `description` 里的示例版本号（不影响行为）。
-- `README.md` / `docs/en/README.md` 的版本号示例 `30.0.47` → `36.0.47`。
+- `README.md` / `docs/en/README.md` 的版本号示例。
 
-**不用改的**：`release.yml` 的大版本是 `sed` 读 `aospApiLevel` 推出来的，自动跟着变；
+**后来已全部去掉**，现在仓库里只有 `android-stub.properties` 一处写死基线：
+
+- `build.yml` 的校验步改成**从 pin 现算**期望值（`sed` 读 `aospApiLevel` /
+  `aospPlatformPackageRevision` / `stripRevision`，拼出 `<api>.<包修订>.<剥离修订>`），
+  再 `grep -qx "version=$EXPECT"`。换 pin 不用动这一步。
+- 注释、`description`、README 里的示例版本号统一换成占位符
+  （`<aospApiLevel>.{count/100}.{count%100:02d}`、`<api>.<包修订>.<剥离修订>`、`<版本名>`）。
+
+**从来不用改的**：`release.yml` 的大版本是 `sed` 读 `aospApiLevel` 推出来的，自动跟着变；
 `scripts/make-jre.sh` 的模块白名单与 API level 无关；`versionCode = 提交数 + 1000` 不受影响。
 
 ## 待办 / 决策点
 
 1. **`aospPrebuiltsCommit` 暂为 `TBD`**。它只进 `META-INF/android-stub.properties` 做溯源，
-   不参与下载与校验（`android.googlesource.com` 在开发机不可达，取不到 API 36 对应的
+   不参与下载与校验（`android.googlesource.com` 在开发机不可达，取不到当前基线对应的
    prebuilts/sdk commit）。要么从可达网络补，要么接受留 `TBD`。
 2. **`r02` 还是等 `r03`**：Google 的包文件名不可变，出新版会是新文件名（不会原地覆盖），
    所以 `r02` 是安全可 pin 的；将来要升 `r03` 是另一次主动动作。
-3. **下游版本号跳变**：大版本 30 → 36。Suwayomi-next 侧如果有按版本号 pin / 比较的逻辑，
-   要确认它认的是「大版本跟着 API 基线走」这条约定而不是具体数字。
+3. **下游版本号跳变**：大版本跟着基线跳。Suwayomi-next 侧如果有按版本号 pin / 比较的逻辑，
+   要确认它认的是「大版本跟着 API 基线走」这条约定，而不是具体数字。
 4. **可选瘦身**：新增的 1487 个类里，`android.health.connect` / `adservices` / `appsearch`
    这类子系统几乎不可能被扩展链接到，可在 `android-stub/build.gradle.kts` 里加前缀排除
    换回约 1 MB 体积 —— 但每加一条排除都要承担「某个扩展真的链了它」的风险，
@@ -108,5 +119,6 @@ python ext_consistency.py --sandbox http://127.0.0.1:4599 --concurrent 3 --round
 
 ## 回滚
 
-改动集中在 `ext-runtime/android-stub/android-stub.properties`，加上面四处字符串。
-`git checkout` 掉即可，构建产物（含 AOSP 包）都在 `build/` 下，不影响工作树。
+改动集中在 `ext-runtime/android-stub/android-stub.properties` 一处（当时还连带四处字符串，
+现已收敛为「从 pin 推导」）。`git checkout` 掉即可，构建产物（含 AOSP 包）都在 `build/` 下，
+不影响工作树。

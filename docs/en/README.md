@@ -8,6 +8,10 @@ plus a **desktop JVM sandbox host**. Split out of
 > English counterpart of the root [`README.md`](../../README.md). The Chinese version is authoritative —
 > if the two diverge, follow the Chinese one.
 
+Current AOSP public API baseline: **API 36** (pinned in
+[`ext-runtime/android-stub/android-stub.properties`](../../ext-runtime/android-stub/android-stub.properties);
+changing the baseline means editing only that file).
+
 ## Build
 
 ```bash
@@ -26,10 +30,10 @@ bash scripts/make-jre.sh windows x64 /tmp/jre   # <windows|linux|mac> <x64|aarch
 
 ## Versioning
 
-`<AOSP API level>.{commit count / 100}.{commit count % 100}`, e.g. `36.0.47`;
+`<AOSP API level>.{commit count / 100}.{commit count % 100}`;
 `versionCode = commit count of this repo + 1000`.
 
-The major version still follows the API baseline of `android-stub` — `release.yml` takes
+The major version follows the API baseline of `android-stub` — `release.yml` takes
 `aospApiLevel` straight from the pin as the major version, so bumping the pin moves it automatically.
 The last two segments are this repo's commit counter.
 
@@ -40,9 +44,9 @@ Pushes to `main` or manual dispatch publish to **GitHub Release assets** (no aut
 
 | Channel | tag | Trigger |
 | --- | --- | --- |
-| release | `v36.0.47` | manual dispatch |
-| beta | `v36.0.47-beta.<run_id>` | manual dispatch |
-| alpha | `36.0.47-alpha.<run_id>` | automatic on push to `main` (jar and two JREs only, no Packages) / manual dispatch |
+| release | `v<version>` | manual dispatch |
+| beta | `v<version>-beta.<run_id>` | manual dispatch |
+| alpha | `<version>-alpha.<run_id>` | automatic on push to `main` (jar and two JREs only, no Packages) / manual dispatch |
 
 | Artifact | Purpose |
 | --- | --- |
@@ -84,8 +88,8 @@ public AOSP API (Apache-2.0).
   (directory layout, JRE ownership, etc.) (Chinese)
 - [`docs/agent/SANDBOX_DETAILS.md`](../agent/SANDBOX_DETAILS.md) — measured details and pitfalls of
   sandbox loading / translation / driving (Chinese)
-- [`docs/agent/API36_UPGRADE.md`](../agent/API36_UPGRADE.md) — Android public API baseline 30 → 36:
-  measured results and upgrade notes (Chinese)
+- [`docs/agent/API36_UPGRADE.md`](../agent/API36_UPGRADE.md) — Android public API baseline upgrade:
+  measured results and upgrade notes; a one-off migration record (Chinese)
 - [`docs/agent/JAVA_KOTLIN_SURVEY.md`](../agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin migration and
   Rust-side extraction survey (Chinese)
 - [`docs/agent/REF_IMPL_DIFF.md`](../agent/REF_IMPL_DIFF.md) — diff against the reference implementations

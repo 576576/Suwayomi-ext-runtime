@@ -15,7 +15,7 @@ on:
   workflow_call:
     inputs:
       version_name:
-        description: 版本名（三段 semver，如 36.0.47；进 Maven 坐标与资产名）
+        description: 版本名（三段 semver：<aospApiLevel>.{count/100}.{count%100:02d}；进 Maven 坐标与资产名）
         required: true
         type: string
       version_code:
@@ -56,7 +56,8 @@ jobs:
       - name: 构建
         run: ./gradlew --no-daemon --console=plain build
 
-      # 制品不变量。AOSP 基线一旦要升级，这里必须同步改 —— 有意为之。
+      # 制品不变量：fat jar 里的基线溯源必须与 pin 推导出的版本一致。
+      # 期望值从 pin 现算，不在这里写死 —— 换基线只要改 android-stub.properties。
       - name: 校验制品
         run: |
           set -euo pipefail
@@ -64,10 +65,16 @@ jobs:
           test -f "$LIB/ext-runtime.jar"
           test -f "$LIB/ext-runtime-shared-sources.jar"
 
-          echo "--- android-stub 基线（应为 36.r02.1）---"
+          PIN=ext-runtime/android-stub/android-stub.properties
+          read -r API REV STRIP <<<"$(sed -n 's/^aospApiLevel=//p;s/^aospPlatformPackageRevision=//p;s/^stripRevision=//p' "$PIN" | paste -sd' ')"
+          EXPECT="$API.$REV.$STRIP"
+          test -n "$API" -a -n "$REV" -a -n "$STRIP" \
+            || { echo "::error::读不全 $PIN 里的基线 pin"; exit 1; }
+
+          echo "--- android-stub 基线（应为 $EXPECT）---"
           unzip -p "$LIB/ext-runtime.jar" META-INF/android-stub.properties | tee /tmp/stub.properties
-          grep -q '^version=36\.r02\.1$' /tmp/stub.properties \
-            || { echo "::error::AOSP 基线与预期不一致"; exit 1; }
+          grep -qx "version=$EXPECT" /tmp/stub.properties \
+            || { echo "::error::AOSP 基线与 pin 推导值 $EXPECT 不一致"; exit 1; }
 
           echo "--- 共享源码树制品内容 ---"
           unzip -l "$LIB/ext-runtime-shared-sources.jar" | head -20

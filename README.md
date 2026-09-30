@@ -3,6 +3,8 @@
 扩展运行时：一份**共享源码树**（Mihon/Tachiyomi 扩展 API 实现 + 沙盒路由/驱动）+ **桌面 JVM 沙盒宿主**。
 从 [`576576/Suwayomi-next`](https://github.com/576576/Suwayomi-next) 剥离而来，与 Rust 服务端只通过 **HTTP + JSON 契约**对话。
 
+当前 AOSP 公开 API 基线：**API 36**（pin 在 [`ext-runtime/android-stub/android-stub.properties`](ext-runtime/android-stub/android-stub.properties)，换基线只改那一处）。
+
 ## 构建
 
 ```bash
@@ -20,9 +22,9 @@ bash scripts/make-jre.sh windows x64 /tmp/jre   # <windows|linux|mac> <x64|aarch
 
 ## 版本号
 
-`<AOSP API level>.{提交数/100}.{提交数%100}`，例如 `36.0.47`；`versionCode = 本仓提交数 + 1000`。
+`<AOSP API level>.{提交数/100}.{提交数%100}`；`versionCode = 本仓提交数 + 1000`。
 
-大版本仍跟着 `android-stub` 的 API 基线走 —— `release.yml` 直接拿 pin 里的 `aospApiLevel` 当大版本，换 pin 它会自动跟着变。后两位是本仓的提交计数。
+大版本跟着 `android-stub` 的 API 基线走 —— `release.yml` 直接拿 pin 里的 `aospApiLevel` 当大版本，换 pin 它会自动跟着变。后两位是本仓的提交计数。
 
 ## 制品与消费
 
@@ -30,9 +32,9 @@ bash scripts/make-jre.sh windows x64 /tmp/jre   # <windows|linux|mac> <x64|aarch
 
 | 通道 | tag | 触发方式 |
 | --- | --- | --- |
-| release | `v36.0.47` | 手动 dispatch |
-| beta | `v36.0.47-beta.<run_id>` | 手动 dispatch |
-| alpha | `36.0.47-alpha.<run_id>` | 推送 main 自动（只出 jar 与两份 JRE，不发 Packages）／手动 dispatch |
+| release | `v<版本名>` | 手动 dispatch |
+| beta | `v<版本名>-beta.<run_id>` | 手动 dispatch |
+| alpha | `<版本名>-alpha.<run_id>` | 推送 main 自动（只出 jar 与两份 JRE，不发 Packages）／手动 dispatch |
 
 | 制品 | 用途 |
 |---|---|
@@ -70,7 +72,7 @@ Mihon/Tachiyomi 扩展 API 形状（Apache-2.0, Copyright 2015 Javier Tomás）�
 - [`docs/agent/EXTRACTION_PLAN.md`](docs/agent/EXTRACTION_PLAN.md) — 剥离施工计划
 - [`docs/agent/EXTRACTION_RECORD.md`](docs/agent/EXTRACTION_RECORD.md) — 决策与试错记录（含目录布局、JRE 归属等细节）
 - [`docs/agent/SANDBOX_DETAILS.md`](docs/agent/SANDBOX_DETAILS.md) — 沙盒加载 / 转换 / 驱动的实测细节与踩坑清单
-- [`docs/agent/API36_UPGRADE.md`](docs/agent/API36_UPGRADE.md) — Android 公开 API 基线 30 → 36 的实测与施工要点
+- [`docs/agent/API36_UPGRADE.md`](docs/agent/API36_UPGRADE.md) — Android 公开 API 基线升级的实测与施工要点（一次性迁移记录）
 - [`docs/agent/JAVA_KOTLIN_SURVEY.md`](docs/agent/JAVA_KOTLIN_SURVEY.md) — Java → Kotlin 迁移与 Rust 侧抽离的盘点结论
 - [`docs/agent/REF_IMPL_DIFF.md`](docs/agent/REF_IMPL_DIFF.md) — 与参考实现（Suwayomi-Server / Mihon）的差异对照，`org/json` / `quickjs` 的 Kotlin 实现调研
 - [`docs/agent/RUST_HANDOFF.md`](docs/agent/RUST_HANDOFF.md) — config 抽离给 Rust（已做）+ SQLite / 偏好落盘的归属评估
