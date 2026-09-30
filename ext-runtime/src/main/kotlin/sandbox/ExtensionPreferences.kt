@@ -19,8 +19,13 @@ import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.TwoStatePreference
 import eu.kanade.tachiyomi.source.sourcePreferences
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.float
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 
 /**
  * 能被 WebUI 渲染的偏好项，顺序即位置索引。
@@ -162,6 +167,58 @@ private fun dialogTitleJson(p: androidx.preference.DialogPreference): String {
     val own = p.dialogTitle?.toString()
     val title = p.title?.toString()
     return jsonStr(if (own.isNullOrEmpty()) (title ?: "") else own)
+}
+
+/** 扩展自己那份 `SharedPreferences` 的全部键值；源不可配置时返回 null。 */
+fun sourcePreferenceValuesJson(src: LoadedSource): String? =
+    if (src.isConfigurable) valuesToJson(sourceSharedPreferences(src).all) else null
+
+/**
+ * 把一份扁平 key/value 写回扩展的 `SharedPreferences`，返回写回后的结果。
+ *
+ * `type` 必须带上：`SharedPreferences` 把类型一起存下来，一律按字符串写回去，
+ * 扩展用 `getInt` / `getBoolean` 读到的就是默认值。未知类型跳过（不回退成字符串，
+ * 那会让扩展读到一个类型不对的值）。
+ */
+fun writeSourcePreferenceValues(src: LoadedSource, body: String): String? {
+    if (!src.isConfigurable) return null
+    val prefs = sourceSharedPreferences(src)
+    val items = runCatching {
+        Json.parseToJsonElement(body).jsonObject["preferences"]?.jsonArray
+    }.getOrNull()
+    if (items != null) {
+        val editor = prefs.edit()
+        items.forEach { item ->
+            val obj = item.jsonObject
+            val key = obj["key"]?.jsonPrimitive?.content ?: return@forEach
+            val value = obj["value"] ?: return@forEach
+            when (obj["type"]?.jsonPrimitive?.content) {
+                "Int" -> editor.putInt(key, value.jsonPrimitive.int)
+                "Long" -> editor.putLong(key, value.jsonPrimitive.long)
+                "Float" -> editor.putFloat(key, value.jsonPrimitive.float)
+                "String" -> editor.putString(key, value.jsonPrimitive.content)
+                "Boolean" -> editor.putBoolean(key, value.jsonPrimitive.boolean)
+                "StringSet" -> editor.putStringSet(key, value.jsonArray.map { it.jsonPrimitive.content }.toMutableSet())
+            }
+        }
+        editor.apply()
+    }
+    return valuesToJson(prefs.all)
+}
+
+private fun valuesToJson(all: Map<String, *>): String =
+    "[" + all.entries.joinToString(",") { (key, value) -> valueToJson(key, value) } + "]"
+
+private fun valueToJson(key: String, value: Any?): String {
+    val k = jsonStr(key)
+    return when (value) {
+        is Int -> """{"key":$k,"type":"Int","value":$value}"""
+        is Long -> """{"key":$k,"type":"Long","value":$value}"""
+        is Float -> """{"key":$k,"type":"Float","value":$value}"""
+        is Boolean -> """{"key":$k,"type":"Boolean","value":$value}"""
+        is Set<*> -> """{"key":$k,"type":"StringSet","value":${stringArrayJson(value.map { it.toString() })}}"""
+        else -> """{"key":$k,"type":"String","value":${jsonStr(value?.toString() ?: "")}}"""
+    }
 }
 
 private fun charSeqArrayJson(a: Array<out CharSequence>?): String =    "[" + (a?.joinToString(",") { jsonStr(it.toString()) } ?: "") + "]"

@@ -162,6 +162,19 @@ class Router(private val registry: SourceRegistry) : HttpHandler {
                         HttpResponse(200, """{"preferences":$json}""")
                     }
                 }
+                // /source/{id}/preferences/raw —— 扁平 key/value，备份读写走这里
+                segments.size == 3 && segments[1] == "preferences" && segments[2] == "raw" -> {
+                    val json = if (req.method == "POST") {
+                        registry.writeSourcePreferenceValues(sourceId, String(req.body, StandardCharsets.UTF_8))
+                    } else {
+                        registry.sourcePreferenceValues(sourceId)
+                    }
+                    if (json == null) {
+                        HttpResponse(404, """{"error":"source $sourceId has no preferences"}""")
+                    } else {
+                        HttpResponse(200, """{"preferences":$json}""")
+                    }
+                }
                 else -> notFound()
             }
         } catch (t: Throwable) {

@@ -228,6 +228,12 @@ class ExtensionRegistry(private val rootDir: Path, private val jarDir: Path) : S
     override fun setSourcePreference(sourceId: Long, position: Int, value: String): String? =
         sources[sourceId]?.let { writeSourcePreference(it, sandboxContext, position, value) }
 
+    override fun sourcePreferenceValues(sourceId: Long): String? =
+        sources[sourceId]?.let { sourcePreferenceValuesJson(it) }
+
+    override fun writeSourcePreferenceValues(sourceId: Long, body: String): String? =
+        sources[sourceId]?.let { writeSourcePreferenceValues(it, body) }
+
     override fun driver(sourceId: Long): SourceDriver? = sources[sourceId]?.let { SourceDriver(it) }
 
     private companion object {
